@@ -13,7 +13,7 @@
 | 云端实时会议 | qwen-audio-3.1-asr-flash-streaming | 百炼托管，无需本机推理引擎；WebSocket 客户端 | Rust 侧建立会话，从混音后、VAD 切段前取得连续音频；按句 ID 更新结果 |
 | 云端录音文件 | qwen-audio-3.1-asr-flash-filetrans | 百炼托管；HTTP 异步任务与文件上传／URL 管理 | 接文件导入入口，保存 task_id、轮询结果并转换成统一逐字稿 |
 
-3.0 对应 Streaming/Filetrans 保留为显式可选对照，不自动回退。3.1 优先是减少首轮组合数量的工程选择，不代表已经证明其粤语质量优于 3.0。Message、短音频 Flash 及其他本地家族暂不扩入首轮。
+3.0 对应 Streaming/Filetrans 保留为显式可选对照，不自动回退。3.1 优先是减少首轮组合数量的工程选择，不代表已经证明其粤语质量优于 3.0。Message、短音频 Flash 暂不扩入首轮。后续专项调查修正了本地范围：BuzzASR 和 Qwen 粤语 LoRA 纳入转换／兼容验证，见 [专项接入调查](cantonese-specialist-integration.md)。
 
 Streaming 型号及地域依据：[百炼实时官方指南](https://help.aliyun.com/en/model-studio/real-time-speech-recognition-user-guide)。其余来源见下文。本地分段转录不等同于原生流式；MLX 路线是否满足会议延迟必须测试。
 
@@ -40,7 +40,7 @@ Streaming、Message 与 Qwen3-ASR-Flash-Realtime 不能仅凭名称互换。官�
 | Qwen3-ASR 0.6B / 1.7B | 官方提供两档模型，支持粤语；官方流式路径依赖 vLLM，流式不返回时间戳；独立 ForcedAligner 提供字词对齐 | 第一优先；先验证文件转录，再评估实时路径 |
 | MLX Qwen3-ASR | mlx-audio 已有 Qwen3-ASR 与 ForcedAligner 示例 | 适合 M1 首轮验证；速度、峰值内存、长音频和流式能力均待本机测量 |
 | Qwen3 粤语 LoRA | 已找到具体 Cantonese written LoRA；需要基座模型 | 不是独立完整模型；书面语目标可能不同于忠实粤语逐字稿，必须检查有没有改写 |
-| BuzzASR/cantonese | 模型卡提供 Transformers 用法，标记 Whisper 系列和 MIT | 不等于能直接放进 whisper.cpp；检查配置、tokenizer 与转换兼容性后再考虑原生集成 |
+| BuzzASR/cantonese | 模型卡提供 Transformers 用法，标记 Whisper 系列和 MIT | 已核查粤语版本沿用原 tokenizer，词表比对一致；优先验证转 GGML 复用现有引擎 |
 | MERaLiON-3-3B-ASR | 区域多语及粤英混合；卡片推荐 vLLM；使用专门公开许可证 | 不是粤语专用模型；托管 API 的流式／说话人能力不能直接算作开放权重能力；暂作自建服务器候选 |
 | Fun-ASR-Nano / SenseVoiceSmall | FunASR 是工具包；不同 checkpoint 有不同语言、时间戳和实时能力 | 次优先对照；不要把工具包支持实时理解成每个模型都支持实时 |
 | 现有 Whisper / Parakeet | 当前软件已有本地调用与下载流程 | 保留作为集成回归基线，不因此认定它们适合粤语 |
@@ -62,3 +62,5 @@ Streaming、Message 与 Qwen3-ASR-Flash-Realtime 不能仅凭名称互换。官�
 - 人工成本：校订所需时间。原始 ASR 与 LLM 校订分别评分，避免用“更通顺”掩盖听错。
 
 具体实施顺序见 [路线图](implementation-roadmap.md)。
+
+专项候选的具体 revision、运行代码检查及接入优先级见 [三类粤语候选接入可行性](cantonese-specialist-integration.md)。

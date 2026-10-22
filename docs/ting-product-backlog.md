@@ -352,3 +352,5 @@
 - 2026-10-22：完成 ASR 生态与当前源码静态调查，采用两类部署、四种场景、三层架构作为选型框架；接入顺序为小样本评测、文件闭环、实时会议、会后精修。详见 [路线图](implementation-roadmap.md) 和 [模型生态](asr-model-ecosystem.md)。本轮仅新增文档，云端调用与 M1 新模型性能尚未实测。
 
 - 2026-10-22：用户进一步收窄当前范围：先稳定接入本地和百炼云端粤语 ASR，提供应用内 API Key 输入入口；上下文调整、精修和说话人识别后置。未来总结与校订共享 LLM 接入基础，但与 STT Provider 分开。MLX 仍是待验证路线，尚未接入。
+
+- 2026-10-22：专项调查 BuzzASR、Qwen 粤语 LoRA、MERaLiON。BuzzASR 粤语版词表与 Whisper large-v3 一致，提升为优先转换验证；粤语 LoRA 纳入基座合并后 MLX 路线（发现 0.6B 版本）；MERaLiON 保留自建 GPU 服务候选。详见 [专项接入调查](cantonese-specialist-integration.md)。配置核查已完成，权重转换与推理尚未实测。
