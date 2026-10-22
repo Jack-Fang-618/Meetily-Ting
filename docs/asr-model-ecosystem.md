@@ -2,6 +2,21 @@
 
 日期：2026-10-22。状态：官方资料与源码调查；没有下载新模型、调用付费 API 或进行性能实测。用户提供的调研是候选框架，不作为已验证事实。
 
+## 第一轮明确选型建议
+
+这是工程接入优先级，不是实测准确率排名。模型和协议已查证，M1 性能及本项目百炼账号仍未实测。
+
+| 用途 | 首选接入型号 | 所需运行支持 | 接入当前应用 |
+| --- | --- | --- | --- |
+| 本地轻量粤语 | Qwen3-ASR 0.6B，先用 mlx-community/Qwen3-ASR-0.6B-8bit | mlx-audio + MLX | Rust Provider 调用受管理的本地推理进程；文件及现有 VAD 片段进入它，结果回到逐字稿 |
+| 本地质量对照 | Qwen3-ASR 1.7B，转换权重 revision/量化待锁定 | mlx-audio + MLX | 与 0.6B 共用适配器；M1 16GB 实测后决定默认型号 |
+| 云端实时会议 | qwen-audio-3.1-asr-flash-streaming | 百炼托管，无需本机推理引擎；WebSocket 客户端 | Rust 侧建立会话，从混音后、VAD 切段前取得连续音频；按句 ID 更新结果 |
+| 云端录音文件 | qwen-audio-3.1-asr-flash-filetrans | 百炼托管；HTTP 异步任务与文件上传／URL 管理 | 接文件导入入口，保存 task_id、轮询结果并转换成统一逐字稿 |
+
+3.0 对应 Streaming/Filetrans 保留为显式可选对照，不自动回退。3.1 优先是减少首轮组合数量的工程选择，不代表已经证明其粤语质量优于 3.0。Message、短音频 Flash 及其他本地家族暂不扩入首轮。
+
+Streaming 型号及地域依据：[百炼实时官方指南](https://help.aliyun.com/en/model-studio/real-time-speech-recognition-user-guide)。其余来源见下文。本地分段转录不等同于原生流式；MLX 路线是否满足会议延迟必须测试。
+
 ## 选型框架
 
 采用两类部署来源：Managed Cloud（供应商托管）与 Self-hosted（本机、局域网或自己的远程服务器）。另记数据边界 device / LAN / remote；自建远程服务器并不等于数据不离开电脑。
