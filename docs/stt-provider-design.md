@@ -46,3 +46,11 @@ Provider 描述包含 provider_id、准确 model_id/revision、runtime、部署�
 - 鉴权、额度、限流、网络、输入不支持和模型错误分别处理；重试有上限，取消能力如实呈现。
 
 首轮必要测试：适配器响应解析、毫秒／秒转换、partial 替换、缺失 confidence、未知 provider 报错、任务恢复与旧稿保留。真实账号／真实录音验证与这些自动化测试分开。
+
+## 百炼文档补充（2026-10-22）
+
+官方 Filetrans 文档当前注明每次一个 file URL；REST 支持临时 oss:// URL，SDK 不支持该形式。官方临时上传机制注明 48 小时有效期，且不建议用于生产环境；正式产品需要稳定、受控的存储方案，不能让用户填写 API Key 后再手工公开录音。[官方说明](https://www.alibabacloud.com/help/zh/model-studio/fun-asr-recorded-speech-recognition-http-api)
+
+因此设置至少包含供应商、地域、API Key、模型；使用专属域名时还需 workspace ID。密钥输入、保存和测试入口属于首阶段范围，真实转录需明确选定音频。连接测试要说明是否调用计费模型，不能伪装成免费校验。
+
+参考本机 ting-speech 技能的历史经验：北京与国际区配置不可混用；同步 Flash、异步 Filetrans 和 WebSocket 实时模式是不同协议，不只替换 model ID。旧项目曾调用成功不能替代本项目账号验证。此次只借用经验，没有复制 SDK、凭据或录音。
