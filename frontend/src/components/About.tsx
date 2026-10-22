@@ -4,7 +4,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import Image from 'next/image';
 import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch";
 import { UpdateDialog } from "./UpdateDialog";
-import { updateService, UpdateInfo } from '@/services/updateService';
+import { updateService, UpdateInfo, UPDATES_ENABLED } from '@/services/updateService';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -68,7 +68,7 @@ export function About() {
                 <div className="mt-3">
                     <Button
                         onClick={handleCheckForUpdates}
-                        disabled={isChecking}
+                        disabled={isChecking || !UPDATES_ENABLED}
                         variant="outline"
                         size="sm"
                         className="text-xs"
@@ -81,7 +81,7 @@ export function About() {
                         ) : (
                             <>
                                 <CheckCircle2 className="h-3 w-3 mr-2" />
-                                Check for Updates
+                                {UPDATES_ENABLED ? "Check for Updates" : "Updates disabled in Ting Dev"}
                             </>
                         )}
                     </Button>
