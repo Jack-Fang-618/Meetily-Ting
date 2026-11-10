@@ -1,0 +1,6 @@
+{
+  "build": {
+    "beforeDevCommand": "node scripts/serve-desktop.mjs",
+    "devUrl": "http://localhost:3118"
+  }
+}

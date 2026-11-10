@@ -469,12 +469,14 @@ pub fn run() {
         builder = builder.append_invoke_initialization_script(r#"
           ;(() => {
             const report = (kind, detail) => window.__TAURI_INTERNALS__.invoke('dev_frontend_diagnostic', {kind, detail: String(detail)}).catch(() => {});
-            window.addEventListener('error', e => report('error', e.message + ' at ' + e.filename + ':' + e.lineno));
+            window.addEventListener('error', e => report('error', e.message || ('Resource failed: ' + (e.target?.src || e.target?.href || e.target?.tagName))), true);
             window.addEventListener('unhandledrejection', e => report('rejection', e.reason?.message || e.reason));
             document.addEventListener('securitypolicyviolation', e => report('csp', e.violatedDirective + ' blocked ' + e.blockedURI));
             document.addEventListener('DOMContentLoaded', () => report('ready', location.origin));
             document.addEventListener('click', e => report('click', e.target?.tagName), true);
-            setTimeout(() => report('health', JSON.stringify({ready: document.readyState, hydrated: document.documentElement.dataset.tingHydrated || false, pointerEvents: getComputedStyle(document.body).pointerEvents, scripts: document.scripts.length})), 10000);
+            const health = () => report('health', JSON.stringify({ready: document.readyState, hydrated: document.documentElement.dataset.tingHydrated || false, pointerEvents: getComputedStyle(document.body).pointerEvents, scripts: Array.from(document.scripts, s => ({src: s.src, type: s.type})), resources: performance.getEntriesByType('resource').filter(r => r.name.includes('/_next/')).map(r => ({name: r.name.split('/').pop(), duration: Math.round(r.duration), bytes: r.transferSize}))}));
+            setTimeout(health, 10000);
+            setTimeout(health, 30000);
           })();
         "#);
     }

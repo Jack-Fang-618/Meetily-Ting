@@ -71,6 +71,9 @@ export default function RootLayout({
   const [interfaceReady, setInterfaceReady] = useState(false);
   useEffect(() => {
     document.documentElement.dataset.tingHydrated = 'true';
+    if (process.env.NODE_ENV !== 'production') {
+      invoke('dev_frontend_diagnostic', { kind: 'hydrated', detail: 'React interface ready' }).catch(() => {});
+    }
     setInterfaceReady(true);
   }, []);
   const [showOnboarding, setShowOnboarding] = useState(false)
