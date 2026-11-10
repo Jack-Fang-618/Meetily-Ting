@@ -88,6 +88,10 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
 
     // Validate based on provider
     match config.provider.as_str() {
+        "localQwen" => {
+            super::mlx_provider::MlxProvider::load(super::mlx_provider::root(app)?, config.model).await?;
+            Ok(())
+        }
         "localWhisper" => {
             info!("🔍 Validating Whisper model...");
             // Ensure whisper engine is initialized first
@@ -184,6 +188,10 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
 
     // Initialize the appropriate engine based on provider
     match config.provider.as_str() {
+        "localQwen" => {
+            let provider = super::mlx_provider::MlxProvider::load(super::mlx_provider::root(app)?, config.model).await?;
+            Ok(TranscriptionEngine::Provider(provider))
+        }
         "parakeet" => {
             info!("🦜 Initializing Parakeet transcription engine");
 
@@ -212,11 +220,12 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                 }
             }
         }
-        "localWhisper" | _ => {
+        "localWhisper" => {
             info!("🎤 Initializing Whisper transcription engine");
             let whisper_engine = get_or_init_whisper(app).await?;
             Ok(TranscriptionEngine::Whisper(whisper_engine))
         }
+        other => Err(format!("Unsupported transcription provider: {}", other)),
     }
 }
 

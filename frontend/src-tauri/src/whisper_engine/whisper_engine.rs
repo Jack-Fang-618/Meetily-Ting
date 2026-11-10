@@ -549,6 +549,18 @@ impl WhisperEngine {
     
     /// Transcribe audio with streaming support for partial results and adaptive quality
     pub async fn transcribe_audio_with_confidence(&self, audio_data: Vec<f32>, language: Option<String>) -> Result<(String, f32, bool)> {
+        use crate::audio::transcription::{input_policy::{policy, transcribe_bounded}, provider::TranscriptResult};
+        let result = transcribe_bounded(audio_data, policy("whisper").map_err(|e| anyhow!(e))?, |part| {
+            let future = self.transcribe_window_with_confidence(part, language.clone());
+            async move {
+                let value = future.await.map_err(|e| e.to_string())?;
+                let (text, confidence, is_partial) = value; Ok(TranscriptResult { text, confidence: Some(confidence), is_partial })
+            }
+        }).await.map_err(|e| anyhow!(e))?;
+        Ok((result.text, result.confidence.unwrap_or(-1.0), result.is_partial))
+    }
+
+    async fn transcribe_window_with_confidence(&self, audio_data: Vec<f32>, language: Option<String>) -> Result<(String, f32, bool)> {
         let ctx_lock = self.current_context.read().await;
         let ctx = ctx_lock.as_ref()
             .ok_or_else(|| anyhow!("No model loaded. Please load a model first."))?;
@@ -666,6 +678,18 @@ impl WhisperEngine {
     }
 
     pub async fn transcribe_audio(&self, audio_data: Vec<f32>, language: Option<String>) -> Result<String> {
+        use crate::audio::transcription::{input_policy::{policy, transcribe_bounded}, provider::TranscriptResult};
+        let result = transcribe_bounded(audio_data, policy("whisper").map_err(|e| anyhow!(e))?, |part| {
+            let future = self.transcribe_window_text(part, language.clone());
+            async move {
+                let text = future.await.map_err(|e| e.to_string())?;
+                Ok(TranscriptResult { text, confidence: None, is_partial: false })
+            }
+        }).await.map_err(|e| anyhow!(e))?;
+        Ok(result.text)
+    }
+
+    async fn transcribe_window_text(&self, audio_data: Vec<f32>, language: Option<String>) -> Result<String> {
         let ctx_lock = self.current_context.read().await;
         let ctx = ctx_lock.as_ref()
             .ok_or_else(|| anyhow!("No model loaded. Please load a model first."))?;

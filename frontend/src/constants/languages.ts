@@ -4,6 +4,7 @@ export const LANGUAGES = [
   { code: 'auto-translate', name: 'Auto Detect (Translate to English)' },
   { code: 'en', name: 'English' },
   { code: 'zh', name: 'Chinese' },
+  { code: 'yue', name: 'Cantonese / 粵語' },
   { code: 'de', name: 'German' },
   { code: 'es', name: 'Spanish' },
   { code: 'ru', name: 'Russian' },
@@ -38,3 +39,5 @@ export const LANGUAGES = [
   { code: 'bg', name: 'Bulgarian' },
   { code: 'lt', name: 'Lithuanian' },
 ];
+
+export const QWEN_LANGUAGE_CODES = new Set(['auto', 'yue', 'zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'pt', 'ru', 'ar', 'id', 'it', 'th', 'vi', 'tr', 'hi', 'ms', 'nl', 'sv', 'da', 'fi', 'pl', 'cs', 'tl', 'fa', 'el', 'ro', 'hu', 'mk']);

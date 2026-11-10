@@ -1,0 +1,26 @@
+{
+  "whisper": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "max_samples": 400000,
+    "min_samples": 1600,
+    "search_samples": 80000,
+    "frame_samples": 320
+  },
+  "parakeet": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "max_samples": 400000,
+    "min_samples": 1600,
+    "search_samples": 80000,
+    "frame_samples": 320
+  },
+  "qwen": {
+    "sample_rate": 16000,
+    "channels": 1,
+    "max_samples": 400000,
+    "min_samples": 1600,
+    "search_samples": 80000,
+    "frame_samples": 320
+  }
+}

@@ -423,6 +423,10 @@ pub async fn whisper_download_model(
     app_handle: tauri::AppHandle,
     model_name: String,
 ) -> Result<(), String> {
+    if model_name == "buzz-cantonese" {
+        return Err("Prepare BuzzASR from the Local Cantonese settings tab (conversion required).".into());
+    }
+
     let engine = {
         let guard = WHISPER_ENGINE.lock().unwrap();
         guard.as_ref().cloned()

@@ -102,11 +102,14 @@ pub async fn start_retranscription<R: Runtime>(
     // Reset cancellation flag
     RETRANSCRIPTION_CANCELLED.store(false, Ordering::SeqCst);
 
+    let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_retranscription(app.clone(), meeting_id.clone(), meeting_folder_path, language, model, provider).await;
 
     // Unload the engine after the batch job (success, failure, or cancellation)
-    super::common::unload_engine_after_batch(use_parakeet).await;
+    if use_qwen {
+        if !super::recording_commands::is_recording().await { super::transcription::mlx_provider::shutdown().await; }
+    } else { super::common::unload_engine_after_batch(use_parakeet).await; }
 
     // Guard will automatically clear flag on drop
     // No need for manual: RETRANSCRIPTION_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -182,6 +185,10 @@ async fn run_retranscription<R: Runtime>(
     let audio_path = find_audio_file(&folder_path)?;
 
     // Determine which provider to use (default to whisper)
+    if !matches!(provider.as_deref(), None | Some("whisper") | Some("localWhisper") | Some("parakeet") | Some("localQwen")) {
+        return Err(anyhow!("Unsupported transcription provider"));
+    }
+    let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
 
     info!(
@@ -300,7 +307,11 @@ async fn run_retranscription<R: Runtime>(
     emit_progress(&app, &meeting_id, "transcribing", 25, "Loading transcription engine...");
 
     // Initialize the appropriate engine once (not per-segment)
-    let whisper_engine = if !use_parakeet {
+    let qwen_engine = if use_qwen {
+        use super::transcription::mlx_provider::{root, MlxProvider};
+        Some(MlxProvider::load(root(&app).map_err(|e| anyhow!(e))?, model.clone().ok_or_else(|| anyhow!("Select a Qwen model"))?).await.map_err(|e| anyhow!(e))?)
+    } else { None };
+    let whisper_engine = if !use_qwen && !use_parakeet {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
@@ -314,18 +325,21 @@ async fn run_retranscription<R: Runtime>(
     // Split very long segments at silence boundaries for better transcription quality.
     // Hard cuts at arbitrary sample positions lose words at boundaries. Instead, scan
     // for the lowest-energy window near the target split point and cut there.
-    const MAX_SEGMENT_SAMPLES: usize = 25 * 16000; // 25 seconds at 16kHz
+    let input_policy = super::transcription::input_policy::policy(
+        if use_qwen { "qwen" } else if use_parakeet { "parakeet" } else { "whisper" }
+    ).map_err(|e| anyhow!(e))?;
+    let max_segment_samples = input_policy.max_samples;
 
     let mut processable_segments: Vec<crate::audio::vad::SpeechSegment> = Vec::new();
     for segment in &speech_segments {
-        if segment.samples.len() > MAX_SEGMENT_SAMPLES {
+        if segment.samples.len() > max_segment_samples {
             debug!(
                 "Splitting large segment ({:.0}ms, {} samples) at silence boundaries",
                 segment.end_timestamp_ms - segment.start_timestamp_ms,
                 segment.samples.len()
             );
 
-            let sub_segments = split_segment_at_silence(segment, MAX_SEGMENT_SAMPLES);
+            let sub_segments = split_segment_at_silence(segment, input_policy);
             debug!("Split into {} sub-segments", sub_segments.len());
             processable_segments.extend(sub_segments);
         } else {
@@ -362,14 +376,18 @@ async fn run_retranscription<R: Runtime>(
             ),
         );
 
-        // Skip very short segments (< 100ms of audio = 1600 samples at 16kHz)
-        if segment.samples.len() < 1600 {
-            debug!("Skipping short segment {} with {} samples", i, segment.samples.len());
+        // Keep short tails; the engine pads them according to its input policy.
+        if segment.samples.is_empty() {
+            debug!("Skipping empty segment {} with {} samples", i, segment.samples.len());
             continue;
         }
 
         // Transcribe this segment
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_qwen {
+            use super::transcription::TranscriptionProvider;
+            let result = qwen_engine.as_ref().unwrap().transcribe(segment.samples.clone(), language.clone()).await.map_err(|e| anyhow!(e))?;
+            (result.text, -1.0f32) // Unknown confidence; not a measured score.
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())

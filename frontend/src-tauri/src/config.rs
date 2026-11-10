@@ -16,6 +16,7 @@ pub const DEFAULT_PARAKEET_MODEL: &str = "parakeet-tdt-0.6b-v3-int8";
 ///
 /// Format: (name, filename, size_mb, accuracy, speed, description)
 pub const WHISPER_MODEL_CATALOG: &[(&str, &str, u32, &str, &str, &str)] = &[
+    ("buzz-cantonese", "ggml-buzz-cantonese.bin", 2951, "High", "Slow", "Cantonese fine-tune; prepare in Local Cantonese settings"),
     // Standard f16 models (full precision)
     ("tiny", "ggml-tiny.bin", 74, "Decent", "Very Fast", "Fastest processing, good for real-time use"),
     ("base", "ggml-base.bin", 142, "Good", "Fast", "Good balance of speed and accuracy"),

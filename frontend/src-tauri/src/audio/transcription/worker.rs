@@ -210,7 +210,7 @@ pub fn start_transcription_task<R: Runtime>(
                                             sequence_id,
                                             chunk_start_time: chunk_timestamp, // Legacy compatibility
                                             is_partial,
-                                            confidence: confidence_opt.unwrap_or(0.85), // Default for providers without confidence
+                                            confidence: confidence_opt.unwrap_or(-1.0), // -1 means this provider supplies no confidence
                                             // NEW: Recording-relative timestamps for sync
                                             audio_start_time,
                                             audio_end_time,

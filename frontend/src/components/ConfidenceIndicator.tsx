@@ -10,7 +10,7 @@ export const ConfidenceIndicator: React.FC<ConfidenceIndicatorProps> = ({
   showIndicator = true,
 }) => {
   // Don't render if preference is disabled
-  if (!showIndicator) {
+  if (!showIndicator || confidence == null || confidence < 0) {
     return null;
   }
 

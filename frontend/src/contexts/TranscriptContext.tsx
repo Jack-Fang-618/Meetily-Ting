@@ -1,5 +1,6 @@
 'use client';
 
+import { copyText } from '@/lib/clipboard';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode, MutableRefObject } from 'react';
 import { Transcript, TranscriptUpdate } from '@/types';
 import { toast } from 'sonner';
@@ -454,7 +455,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Copy transcript to clipboard with recording-relative timestamps
-  const copyTranscript = useCallback(() => {
+  const copyTranscript = useCallback(async () => {
     // Format timestamps as recording-relative [MM:SS] instead of wall-clock time
     const formatTime = (seconds: number | undefined): string => {
       if (seconds === undefined) return '[--:--]';
@@ -467,7 +468,7 @@ export function TranscriptProvider({ children }: { children: ReactNode }) {
     const fullTranscript = transcripts
       .map(t => `${formatTime(t.audio_start_time)} ${t.text}`)
       .join('\n');
-    navigator.clipboard.writeText(fullTranscript);
+    if (!await copyText(fullTranscript)) return;
 
     toast.success("Transcript copied to clipboard");
   }, [transcripts]);

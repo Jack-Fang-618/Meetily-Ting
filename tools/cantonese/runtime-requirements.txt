@@ -1,0 +1,6 @@
+mlx-audio==0.6.1
+mlx==0.32.4
+mlx-metal==0.32.4
+huggingface-hub==2.2.0
+soundfile==0.14.0
+truststore==0.10.5

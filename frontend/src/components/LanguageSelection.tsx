@@ -1,3 +1,4 @@
+import { QWEN_LANGUAGE_CODES } from '@/constants/languages';
 import React, { useState, useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import Analytics from '@/lib/analytics';
@@ -15,6 +16,7 @@ const LANGUAGES: Language[] = [
   { code: 'auto-translate', name: 'Auto Detect (Translate to English)' },
   { code: 'en', name: 'English' },
   { code: 'zh', name: 'Chinese' },
+  { code: 'yue', name: 'Cantonese / 粵語' },
   { code: 'de', name: 'German' },
   { code: 'es', name: 'Spanish' },
   { code: 'ru', name: 'Russian' },
@@ -118,7 +120,7 @@ interface LanguageSelectionProps {
   selectedLanguage: string;
   onLanguageChange: (language: string) => void;
   disabled?: boolean;
-  provider?: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+  provider?: 'localWhisper' | 'localQwen' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
 }
 
 export function LanguageSelection({
@@ -132,9 +134,15 @@ export function LanguageSelection({
 
   // Parakeet only supports auto-detection (doesn't support manual language selection)
   const isParakeet = provider === 'parakeet';
+  useEffect(() => {
+    if (provider === 'localQwen' && !QWEN_LANGUAGE_CODES.has(selectedLanguage)) {
+      setSelectedLanguage('auto');
+      onLanguageChange('auto');
+    }
+  }, [provider, selectedLanguage, setSelectedLanguage, onLanguageChange]);
   const availableLanguages = isParakeet
     ? LANGUAGES.filter(lang => lang.code === 'auto' || lang.code === 'auto-translate')
-    : LANGUAGES;
+    : provider === 'localQwen' ? LANGUAGES.filter(lang => QWEN_LANGUAGE_CODES.has(lang.code)) : LANGUAGES;
 
   const handleLanguageChange = async (languageCode: string) => {
     setSaving(true);

@@ -354,3 +354,8 @@
 - 2026-10-22：用户进一步收窄当前范围：先稳定接入本地和百炼云端粤语 ASR，提供应用内 API Key 输入入口；上下文调整、精修和说话人识别后置。未来总结与校订共享 LLM 接入基础，但与 STT Provider 分开。MLX 仍是待验证路线，尚未接入。
 
 - 2026-10-22：专项调查 BuzzASR、Qwen 粤语 LoRA、MERaLiON。BuzzASR 粤语版词表与 Whisper large-v3 一致，提升为优先转换验证；粤语 LoRA 纳入基座合并后 MLX 路线（发现 0.6B 版本）；MERaLiON 保留自建 GPU 服务候选。详见 [专项接入调查](cantonese-specialist-integration.md)。配置核查已完成，权重转换与推理尚未实测。
+
+
+## 本地粤语接入进展
+
+本次只安装 Qwen3-ASR 0.6B，其他候选按需下载，MERaLiON 暂缓。实现范围、试验记录与待验证限制见 [本地粤语开发设置](local-cantonese-setup.md)。下一步用短粤语与粤英混合录音验证实际应用体验，再决定是否下载更大的模型。

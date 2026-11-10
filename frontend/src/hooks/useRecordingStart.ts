@@ -26,6 +26,7 @@ interface UseRecordingStartReturn {
 }
 
 interface TranscriptConfig {
+  model?: string;
   provider?: string;
 }
 
@@ -82,6 +83,11 @@ export function useRecordingStart(
   const checkTranscriptionModelReady = useCallback(async (): Promise<boolean> => {
     try {
       const provider = await getTranscriptionProvider();
+      if (provider === 'localQwen') {
+        const config = await invoke<TranscriptConfig>('api_get_transcript_config');
+        const local = await invoke<{ runtime_ready: boolean; models: { id: string; installed: boolean }[] }>('cantonese_status');
+        return local.runtime_ready && local.models.some(m => m.id === config.model && m.installed);
+      }
       const commands = getProviderCommands(provider);
 
       if (commands) {
@@ -101,6 +107,9 @@ export function useRecordingStart(
   const checkIfModelDownloading = useCallback(async (): Promise<boolean> => {
     try {
       const provider = await getTranscriptionProvider();
+      if (provider === 'localQwen') {
+        return (await invoke<{ preparing: boolean }>('cantonese_status')).preparing;
+      }
       const commands = getProviderCommands(provider);
       if (!commands) return false;
 

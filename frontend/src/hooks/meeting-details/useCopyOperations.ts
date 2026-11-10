@@ -1,3 +1,4 @@
+import { copyText, writeClipboardText } from '@/lib/clipboard';
 import { useCallback, RefObject } from 'react';
 import { MeetingSummary, Transcript } from '@/types';
 import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
@@ -90,7 +91,7 @@ export function useCopyOperations({
       .map(t => `${formatTime(t.audio_start_time, t.timestamp)} ${t.text}  `)
       .join('\n');
 
-    await navigator.clipboard.writeText(header + date + fullTranscript);
+    if (!await copyText(header + date + fullTranscript)) return;
     toast.success("Transcript copied to clipboard");
 
     // Track copy analytics
@@ -178,7 +179,7 @@ export function useCopyOperations({
       })}\n\n---\n\n`;
 
       const fullMarkdown = header + metadata + summaryMarkdown;
-      await navigator.clipboard.writeText(fullMarkdown);
+      await writeClipboardText(fullMarkdown);
 
       console.log('✅ Successfully copied to clipboard!');
       toast.success("Summary copied to clipboard");

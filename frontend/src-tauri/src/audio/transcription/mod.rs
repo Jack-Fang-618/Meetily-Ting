@@ -23,3 +23,9 @@ pub use worker::{
     reset_speech_detected_flag,
     TranscriptUpdate
 };
+
+pub mod mlx_provider;
+
+pub mod input_policy;
+
+pub mod model_management;

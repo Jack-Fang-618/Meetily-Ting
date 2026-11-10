@@ -1,15 +1,14 @@
+import { TranscriptionModelCard as ModelCard } from './TranscriptionModelCard';
+import { useLocalModelSelection } from '../hooks/useLocalModelSelection';
 import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   ModelInfo,
   ModelStatus,
   getModelIcon,
-  formatFileSize,
-  getModelPerformanceBadge,
-  isQuantizedModel,
   getModelTagline,
   WhisperAPI
 } from '../lib/whisper';
@@ -28,17 +27,15 @@ export function ModelManager({
   className = '',
   autoSave = false
 }: ModelManagerProps) {
+  const { selecting, select: selectModel } = useLocalModelSelection('localWhisper', onModelSelect, autoSave);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set());
   const [cancellingModels, setCancellingModels] = useState<Set<string>>(new Set());
-  const [hasUserSelection, setHasUserSelection] = useState(false);
 
   // Refs for stable callbacks
-  const onModelSelectRef = useRef(onModelSelect);
-  const autoSaveRef = useRef(autoSave);
 
   // Progress throttle map to prevent rapid updates
   const progressThrottleRef = useRef<Map<string, { progress: number; timestamp: number }>>(new Map());
@@ -46,10 +43,7 @@ export function ModelManager({
   const cancellationReconcileTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Update refs when props change
-  useEffect(() => {
-    onModelSelectRef.current = onModelSelect;
-    autoSaveRef.current = autoSave;
-  }, [onModelSelect, autoSave]);
+
 
   // Load persisted downloading state from localStorage
   const getPersistedDownloadingModels = (): Set<string> => {
@@ -255,13 +249,8 @@ export function ModelManager({
             duration: 4000
           });
 
-          // Auto-select after download using stable refs
-          if (onModelSelectRef.current) {
-            onModelSelectRef.current(modelName);
-            if (autoSaveRef.current) {
-              saveModelSelection(modelName);
-            }
-          }
+          // Download completion only marks the model ready.
+
         }
       );
 
@@ -317,18 +306,6 @@ export function ModelManager({
       cancellationReconciliationModelsRef.current.clear();
     };
   }, []); // Empty dependency array - listeners use refs for stable callbacks
-
-  const saveModelSelection = async (modelName: string) => {
-    try {
-      await invoke('api_save_transcript_config', {
-        provider: 'localWhisper',
-        model: modelName,
-        apiKey: null
-      });
-    } catch (error) {
-      console.error('Failed to save model selection:', error);
-    }
-  };
 
   const cancelDownload = async (modelName: string) => {
     const displayName = getDisplayName(modelName);
@@ -397,28 +374,11 @@ export function ModelManager({
     }
   };
 
-  const selectModel = async (modelName: string) => {
-    setHasUserSelection(true);
-
-    if (onModelSelect) {
-      onModelSelect(modelName);
-    }
-
-    if (autoSave) {
-      await saveModelSelection(modelName);
-    }
-
-    const displayName = getDisplayName(modelName);
-    toast.success(`Switched to ${displayName}`, {
-      duration: 3000
-    });
-  };
-
   const deleteModel = async (modelName: string) => {
     const displayName = getDisplayName(modelName);
 
     try {
-      await WhisperAPI.deleteCorruptedModel(modelName);
+      await invoke('delete_transcription_model', { provider: 'localWhisper', model: modelName });
 
       // Refresh models list
       const modelList = await WhisperAPI.getAvailableModels();
@@ -507,6 +467,10 @@ export function ModelManager({
               isDownloading={downloadingModels.has(model.name)}
               isCancelling={cancellingModels.has(model.name)}
               displayName={getDisplayName(model.name)}
+              icon={getModelIcon(model.accuracy)}
+              description={getModelTagline(model.name, model.speed, model.accuracy)}
+              isSelecting={selecting === model.name}
+              disabled={!!selecting}
             />
           );
         })}
@@ -538,6 +502,10 @@ export function ModelManager({
                     isDownloading={downloadingModels.has(model.name)}
                     isCancelling={cancellingModels.has(model.name)}
                     displayName={getDisplayName(model.name)}
+              icon={getModelIcon(model.accuracy)}
+              description={getModelTagline(model.name, model.speed, model.accuracy)}
+              isSelecting={selecting === model.name}
+              disabled={!!selecting}
                   />
                 ))}
               </div>
@@ -557,255 +525,5 @@ export function ModelManager({
         </motion.div>
       )}
     </div>
-  );
-}
-
-// Model Card Component
-interface ModelCardProps {
-  model: ModelInfo;
-  isSelected: boolean;
-  isRecommended: boolean;
-  onSelect: () => void;
-  onDownload: () => void;
-  onCancel: () => void;
-  onDelete: () => void;
-  isDownloading: boolean;
-  isCancelling: boolean;
-  displayName: string;
-}
-
-function ModelCard({
-  model,
-  isSelected,
-  isRecommended,
-  onSelect,
-  onDownload,
-  onCancel,
-  onDelete,
-  isDownloading,
-  isCancelling,
-  displayName
-}: ModelCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  const isAvailable = model.status === 'Available';
-  const isMissing = model.status === 'Missing';
-  const isError = typeof model.status === 'object' && 'Error' in model.status;
-  const isCorrupted = typeof model.status === 'object' && 'Corrupted' in model.status;
-  const downloadProgress =
-    typeof model.status === 'object' && 'Downloading' in model.status
-      ? model.status.Downloading.progress
-      : null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 5 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`
-        relative rounded-lg border-2 transition-all cursor-pointer
-        ${isSelected && isAvailable
-          ? 'border-blue-500 bg-blue-50'
-          : isAvailable
-            ? 'border-gray-200 hover:border-gray-300 bg-white'
-            : 'border-gray-200 bg-gray-50'
-        }
-        ${isAvailable ? '' : 'cursor-default'}
-      `}
-      onClick={() => {
-        if (isAvailable) onSelect();
-      }}
-    >
-      {/* Recommended Badge */}
-      {isRecommended && (
-        <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-          Recommended
-        </div>
-      )}
-
-      <div className="p-3">
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex-1">
-            {/* Model Name and Tagline */}
-            <div className="flex items-center gap-2 flex-wrap mb-2">
-              <span className="text-2xl">{getModelIcon(model.accuracy)}</span>
-              <h3 className="font-semibold text-gray-900">{displayName}</h3>
-              <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-500">{getModelTagline(model.name, model.speed, model.accuracy)}</span>
-              {isSelected && isAvailable && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"
-                >
-                  ✓
-                </motion.span>
-              )}
-              {isQuantizedModel(model.name) && (
-                <span className={`px-2 py-0.5 rounded-full text-xs ${getModelPerformanceBadge(model.name).color === 'green'
-                  ? 'bg-green-100 text-green-700'
-                  : getModelPerformanceBadge(model.name).color === 'orange'
-                    ? 'bg-orange-100 text-orange-700'
-                    : 'bg-gray-100 text-gray-700'
-                  }`}>
-                  {getModelPerformanceBadge(model.name).label}
-                </span>
-              )}
-            </div>
-
-            {/* Model Specs */}
-            <div className="flex items-center space-x-4 text-sm text-gray-600 ml-9 mt-1.5">
-              <span className="flex items-center space-x-1">
-                <span>📦</span>
-                <span>{formatFileSize(model.size_mb)}</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span>🎯</span>
-                <span>{model.accuracy} accuracy</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span>⚡</span>
-                <span>{model.speed} processing</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Status/Action */}
-          <div className="ml-4 flex items-center gap-2">
-            {isAvailable && (
-              <>
-                <div className="flex items-center gap-1.5 text-green-600">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-xs font-medium">Ready</span>
-                </div>
-                <AnimatePresence>
-                  {isHovered && (
-                    <motion.button
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      transition={{ duration: 0.15 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete();
-                      }}
-                      className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                      title="Delete model to free up space"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </motion.button>
-                  )}
-                </AnimatePresence>
-              </>
-            )}
-
-            {isMissing && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDownload();
-                }}
-                className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                Download
-              </button>
-            )}
-
-            {downloadProgress === null && isError && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDownload();
-                }}
-                className="bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
-              >
-                Retry
-              </button>
-            )}
-
-            {isCorrupted && (
-              <div className="flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  className="bg-orange-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-orange-700 transition-colors"
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDownload();
-                  }}
-                  className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  Re-download
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Full-width Download Progress Bar - PROMINENT */}
-        {downloadProgress !== null && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-3 pt-3 border-t border-gray-200"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-blue-600">
-                  {isCancelling ? 'Cancelling…' : 'Downloading...'}
-                </span>
-                {!isCancelling && (
-                  <span className="text-sm font-semibold text-blue-600">{Math.round(downloadProgress)}%</span>
-                )}
-              </div>
-              {isCancelling ? (
-                <span className="text-xs text-gray-500 font-medium px-2 py-1">
-                  Cancellation requested
-                </span>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCancel();
-                  }}
-                  className="text-xs text-gray-600 hover:text-red-600 font-medium transition-colors px-2 py-1 rounded hover:bg-red-50"
-                  title="Cancel download"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${downloadProgress}%` }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {model.size_mb ? (
-                <>
-                  {formatFileSize(model.size_mb * downloadProgress / 100)} / {formatFileSize(model.size_mb)}
-                </>
-              ) : (
-                'Downloading...'
-              )}
-            </p>
-          </motion.div>
-        )}
-      </div>
-    </motion.div>
   );
 }

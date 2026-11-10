@@ -72,3 +72,34 @@ rendered HTML without working interactions. A development-only `devCsp` now
 permits those scripts and the localhost:3118 hot-reload connection. The production
 CSP is unchanged. After restarting, frontend IPC calls resumed, the independent
 SQLite database initialized, and onboarding step 1 persisted successfully.
+
+## Clipboard in the desktop WebView
+
+Copy operations now use Tauri's native clipboard plugin on desktop, with only
+`clipboard-manager:allow-write-text` granted. Browser previews retain the browser
+clipboard API. Async database reads before copying can outlive WebKit's user
+activation window; the previous browser-only calls could reject with
+`NotAllowedError`. Copy handlers now await writes and handle failures instead of
+showing success early or leaking a rejected promise. Restart/rebuild the native
+app after adding this plugin; frontend hot reload alone is insufficient.
+
+## Desktop launcher and intermittent unresponsive UI investigation
+
+The desktop shortcut delegates to `tools/dev/start.command`, which checks port
+3118 to prevent duplicate dev servers and records startup output in
+`~/Library/Logs/TingDev/startup.log`. It does not kill an existing session.
+
+Debug frontend diagnostics record CSP failures, uncaught errors, and a delayed
+hydration/pointer-events health snapshot in the OS temporary directory as
+`ting-frontend-diagnostic.log`. No transcript or input values are intentionally
+collected. The React root marks successful hydration. The injected script must
+start with a semicolon because Tauri's IPC initialization script ends in `})()`
+without one; concatenating another IIFE otherwise fails before registering the
+diagnostic listeners. This fixes diagnostic collection, not proof of the original
+intermittent UI cause. Successful native startup alone does not verify buttons.
+
+The root layout now displays a loading cover until React's first effect runs,
+so server-rendered controls are not presented as usable before hydration. Latest
+debug run reported `hydrated=true`, `pointerEvents=auto`, and received clicks;
+no CSP violation was captured. This does not establish the cause of every reported
+unresponsive button. User confirmation of settings navigation remains necessary.

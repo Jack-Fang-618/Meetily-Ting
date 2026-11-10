@@ -35,7 +35,7 @@ import { useConfig } from '@/contexts/ConfigContext';
 import { useImportAudio, ImportResult } from '@/hooks/useImportAudio';
 import { useRouter } from 'next/navigation';
 import { useSidebar } from '../Sidebar/SidebarProvider';
-import { LANGUAGES } from '@/constants/languages';
+import { LANGUAGES, QWEN_LANGUAGE_CODES } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 
 
@@ -76,7 +76,6 @@ export function ImportAudioDialog({
 
   const [title, setTitle] = useState('');
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
 
   // Always start as false — represents "dialog has not yet been opened".
@@ -138,7 +137,6 @@ export function ImportAudioDialog({
       setTitle('');
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
-      setShowAdvanced(false);
 
       // Validate preselected file if provided
       if (preselectedFile) {
@@ -172,6 +170,10 @@ export function ImportAudioDialog({
   const isParakeetModel = selectedModel?.provider === 'parakeet';
 
   useEffect(() => {
+    if (selectedModel?.provider === 'localQwen' && !QWEN_LANGUAGE_CODES.has(selectedLang)) setSelectedLang('auto');
+  }, [selectedModel?.provider, selectedLang]);
+
+  useEffect(() => {
     if (isParakeetModel && selectedLang !== 'auto') {
       setSelectedLang('auto');
     }
@@ -185,7 +187,7 @@ export function ImportAudioDialog({
   };
 
   const handleStartImport = async () => {
-    if (!fileInfo) return;
+    if (!fileInfo || !selectedModel || loadingModels) return;
 
     await startImport(
       fileInfo.path,
@@ -325,36 +327,24 @@ export function ImportAudioDialog({
                 </div>
               )}
 
-              {/* Advanced options (collapsible) */}
+              {/* Always-visible model and source language settings */}
               {fileInfo && (
                 <div className="border rounded-lg">
-                  <button
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="w-full flex items-center justify-between p-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    <span>Advanced Options</span>
-                    {showAdvanced ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {showAdvanced && (
+                  <div className="p-3 text-sm font-medium text-gray-700">Transcription settings</div>
                     <div className="p-3 pt-0 space-y-4 border-t">
                       {/* Language selector */}
                       {!isParakeetModel ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <Globe className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Language</span>
+                            <span className="text-sm font-medium">Audio language</span>
                           </div>
                           <Select value={selectedLang} onValueChange={setSelectedLang}>
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select language" />
                             </SelectTrigger>
                             <SelectContent className="max-h-60">
-                              {LANGUAGES.map((lang) => (
+                              {LANGUAGES.filter(lang => selectedModel?.provider !== 'localQwen' || QWEN_LANGUAGE_CODES.has(lang.code)).map((lang) => (
                                 <SelectItem key={lang.code} value={lang.code}>
                                   {lang.name}
                                 </SelectItem>
@@ -366,7 +356,7 @@ export function ImportAudioDialog({
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <Globe className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Language</span>
+                            <span className="text-sm font-medium">Audio language</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Language selection isn't supported for Parakeet. It always uses automatic detection.
@@ -374,6 +364,9 @@ export function ImportAudioDialog({
                         </div>
                       )}
 
+                      {!loadingModels && !selectedModel && <p role="status" className="text-sm text-amber-700">
+                        {availableModels.length ? 'Choose an installed model below. Your saved model may be unavailable.' : 'No prepared models are available. Download a model in Transcription settings first.'}
+                      </p>}
                       {/* Model selector */}
                       {availableModels.length > 0 && (
                         <div className="space-y-2">
@@ -403,7 +396,6 @@ export function ImportAudioDialog({
                         </div>
                       )}
                     </div>
-                  )}
                 </div>
               )}
             </>
@@ -445,7 +437,7 @@ export function ImportAudioDialog({
               <Button
                 onClick={handleStartImport}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!fileInfo}
+                disabled={!fileInfo || !selectedModel || loadingModels}
               >
                 <Upload className="h-4 w-4 mr-2" />
                 Import

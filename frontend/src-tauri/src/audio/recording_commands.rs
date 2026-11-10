@@ -846,6 +846,7 @@ pub async fn stop_recording<R: Runtime>(
     };
 
     match config.as_deref() {
+        Some("localQwen") => { super::transcription::mlx_provider::shutdown().await; }
         Some("parakeet") => {
             info!("🦜 Unloading Parakeet model...");
             let engine_clone = {

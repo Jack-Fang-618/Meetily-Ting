@@ -444,10 +444,41 @@ pub fn get_language_preference_internal() -> Option<String> {
     LANGUAGE_PREFERENCE.lock().ok().map(|lang| lang.clone())
 }
 
+// Development-only diagnostics: do not log transcript, form values, or credentials.
+#[tauri::command]
+fn dev_frontend_diagnostic(kind: String, detail: String) {
+    #[cfg(debug_assertions)]
+    {
+        let line = format!("[frontend:{}] {}\n", kind, detail.chars().take(2000).collect::<String>());
+        eprint!("{}", line);
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("ting-frontend-diagnostic.log")) {
+            let _ = file.write_all(line.as_bytes());
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = (kind, detail);
+}
+
 pub fn run() {
     log::set_max_level(log::LevelFilter::Info);
 
     let mut builder = tauri::Builder::default();
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.append_invoke_initialization_script(r#"
+          ;(() => {
+            const report = (kind, detail) => window.__TAURI_INTERNALS__.invoke('dev_frontend_diagnostic', {kind, detail: String(detail)}).catch(() => {});
+            window.addEventListener('error', e => report('error', e.message + ' at ' + e.filename + ':' + e.lineno));
+            window.addEventListener('unhandledrejection', e => report('rejection', e.reason?.message || e.reason));
+            document.addEventListener('securitypolicyviolation', e => report('csp', e.violatedDirective + ' blocked ' + e.blockedURI));
+            document.addEventListener('DOMContentLoaded', () => report('ready', location.origin));
+            document.addEventListener('click', e => report('click', e.target?.tagName), true);
+            setTimeout(() => report('health', JSON.stringify({ready: document.readyState, hydrated: document.documentElement.dataset.tingHydrated || false, pointerEvents: getComputedStyle(document.body).pointerEvents, scripts: document.scripts.length})), 10000);
+          })();
+        "#);
+    }
+
 
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
     {
@@ -463,6 +494,7 @@ pub fn run() {
     }
 
     builder
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -610,6 +642,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            dev_frontend_diagnostic,
             start_recording,
             stop_recording,
             is_recording,
@@ -828,6 +861,12 @@ pub fn run() {
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
             audio::import::start_import_audio_command,
+            audio::transcription::model_management::select_transcription_model,
+            audio::transcription::model_management::delete_transcription_model,
+            audio::transcription::mlx_provider::cantonese_cancel_preparation,
+            audio::transcription::mlx_provider::cantonese_status,
+            audio::transcription::mlx_provider::cantonese_prepare_model,
+            audio::transcription::mlx_provider::cantonese_load_model,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
         ])
@@ -842,6 +881,7 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     log::info!("Application exiting, cleaning up resources...");
                     tauri::async_runtime::block_on(async {
+                        audio::transcription::mlx_provider::shutdown().await;
                         // Clean up database connection and checkpoint WAL
                         if let Some(app_state) = _app_handle.try_state::<state::AppState>() {
                             log::info!("Starting database cleanup...");

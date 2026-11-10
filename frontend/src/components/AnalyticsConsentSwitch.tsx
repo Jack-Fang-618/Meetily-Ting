@@ -1,3 +1,4 @@
+import { writeClipboardText } from '@/lib/clipboard';
 import React, { useContext, useState, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ export default function AnalyticsConsentSwitch() {
     if (!userId) return;
 
     try {
-      await navigator.clipboard.writeText(userId);
+      await writeClipboardText(userId);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
 

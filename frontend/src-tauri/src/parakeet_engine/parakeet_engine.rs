@@ -541,6 +541,18 @@ impl ParakeetEngine {
 
     /// Transcribe audio samples using the loaded Parakeet model
     pub async fn transcribe_audio(&self, audio_data: Vec<f32>) -> Result<String> {
+        use crate::audio::transcription::{input_policy::{policy, transcribe_bounded}, provider::TranscriptResult};
+        let result = transcribe_bounded(audio_data, policy("parakeet").map_err(|e| anyhow!(e))?, |part| {
+            let future = self.transcribe_window(part);
+            async move {
+                let value = future.await.map_err(|e| e.to_string())?;
+                Ok(TranscriptResult { text: value, confidence: None, is_partial: false })
+            }
+        }).await.map_err(|e| anyhow!(e))?;
+        Ok(result.text)
+    }
+
+    async fn transcribe_window(&self, audio_data: Vec<f32>) -> Result<String> {
         let mut model_guard = self.current_model.write().await;
         let model = model_guard
             .as_mut()

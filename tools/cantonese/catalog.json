@@ -1,0 +1,6 @@
+[
+  {"id":"qwen3-asr-0.6b","label":"Qwen3-ASR 0.6B","size_mb":900,"repo":"mlx-community/Qwen3-ASR-0.6B-8bit","revision":"89e96d92ba34aca20b3e29fb10cc284097d1219f"},
+  {"id":"qwen3-asr-1.7b","label":"Qwen3-ASR 1.7B","size_mb":2200,"repo":"mlx-community/Qwen3-ASR-1.7B-8bit","revision":"a8379a2e2f9e313c9292cdf1af4055ab56d50d55"},
+  {"id":"qwen3-yue-0.6b","label":"Qwen3 粤语 0.6B · 书面记录微调","size_mb":900,"repo":"Qwen/Qwen3-ASR-0.6B","revision":"5eb144179a02acc5e5ba31e748d22b0cf3e303b0","adapter":"JackyHoCL/Qwen3-ASR-0.6B-cantonese-written-lora","adapter_revision":"6e45a70ff66be26b1de49136b6900ef9def3f90d"},
+  {"id":"qwen3-yue-1.7b","label":"Qwen3 粤语 1.7B · 书面记录微调","size_mb":2200,"repo":"Qwen/Qwen3-ASR-1.7B","revision":"7278e1e70fe206f11671096ffdd38061171dd6e5","adapter":"JackyHoCL/Qwen3-ASR-1.7B-cantonese-written-lora","adapter_revision":"26379e97cafba3fd9b6f1e7ff030fbefc8dbea9f"}
+]

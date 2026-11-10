@@ -20,7 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { useConfig } from '@/contexts/ConfigContext';
-import { LANGUAGES } from '@/constants/languages';
+import { LANGUAGES, QWEN_LANGUAGE_CODES } from '@/constants/languages';
 import { useTranscriptionModels, ModelOption } from '@/hooks/useTranscriptionModels';
 import Analytics from '@/lib/analytics';
 
@@ -93,6 +93,10 @@ export function RetranscribeDialog({
     return availableModels.find(m => m.provider === provider && m.name === name);
   }, [selectedModelKey, availableModels]);
   const isParakeetModel = selectedModelDetails?.provider === 'parakeet';
+
+  useEffect(() => {
+    if (selectedModelDetails?.provider === 'localQwen' && !QWEN_LANGUAGE_CODES.has(selectedLang)) setSelectedLang('auto');
+  }, [selectedModelDetails?.provider, selectedLang]);
 
   useEffect(() => {
     if (isParakeetModel && selectedLang !== 'auto') {
@@ -202,6 +206,10 @@ export function RetranscribeDialog({
       return;
     }
 
+    if (!selectedModelDetails || loadingModels) {
+      setError('Select an installed transcription model first');
+      return;
+    }
     setIsProcessing(true);
     setError(null);
     setProgress(null);
@@ -312,7 +320,7 @@ export function RetranscribeDialog({
                     <SelectValue placeholder="Select language" />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
-                    {LANGUAGES.map((lang) => (
+                    {LANGUAGES.filter(lang => selectedModelDetails?.provider !== 'localQwen' || QWEN_LANGUAGE_CODES.has(lang.code)).map((lang) => (
                       <SelectItem key={lang.code} value={lang.code}>
                         {lang.name}
                       </SelectItem>
@@ -396,7 +404,7 @@ export function RetranscribeDialog({
               <Button
                 onClick={handleStartRetranscription}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!meetingFolderPath}
+                disabled={!meetingFolderPath || !selectedModelDetails || loadingModels}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Start Retranscription

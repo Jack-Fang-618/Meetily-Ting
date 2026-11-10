@@ -68,6 +68,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const [interfaceReady, setInterfaceReady] = useState(false);
+  useEffect(() => {
+    document.documentElement.dataset.tingHydrated = 'true';
+    setInterfaceReady(true);
+  }, []);
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState(false)
 
@@ -233,6 +238,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${sourceSans3.variable} font-sans antialiased`}>
+        {!interfaceReady && (
+          <div role="status" aria-live="polite" className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-3 bg-white text-gray-700">
+            <p className="text-lg font-semibold">正在加载 Ting…</p>
+            <p className="text-sm">首次启动或更新后，界面准备可能需要一些时间。</p>
+          </div>
+        )}
         <AnalyticsProvider>
           <RecordingStateProvider>
             <TranscriptProvider>

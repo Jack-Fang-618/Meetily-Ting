@@ -8,7 +8,7 @@ export interface RawModelInfo {
 }
 
 export interface ModelOption {
-  provider: 'whisper' | 'parakeet';
+  provider: 'whisper' | 'parakeet' | 'localQwen';
   name: string;
   displayName: string;
   size_mb: number;
@@ -47,6 +47,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
 
     // Fetch Whisper models
     try {
+      await invoke('whisper_init');
       const whisperModels = await invoke<RawModelInfo[]>('whisper_get_available_models');
       const availableWhisper = whisperModels
         .filter((m) => m.status === 'Available')
@@ -63,6 +64,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
 
     // Fetch Parakeet models
     try {
+      await invoke('parakeet_init');
       const parakeetModels = await invoke<RawModelInfo[]>('parakeet_get_available_models');
       const availableParakeet = parakeetModels
         .filter((m) => m.status === 'Available')
@@ -77,6 +79,12 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
       console.error('Failed to fetch Parakeet models:', err);
     }
 
+    try {
+      const local = await invoke<{ runtime_ready: boolean; models: { id: string; label: string; size_mb: number; installed: boolean }[] }>('cantonese_status');
+      if (local.runtime_ready) allModels.push(...local.models.filter(m => m.installed).map(m => ({
+        provider: 'localQwen' as const, name: m.id, displayName: m.label, size_mb: m.size_mb,
+      })));
+    } catch (err) { console.error('Failed to fetch local Qwen models:', err); }
     setAvailableModels(allModels);
 
     // Set default model based on user's saved configuration
@@ -88,6 +96,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     const configuredMatch = allModels.find(
       (m) =>
         (configuredProvider === 'localWhisper' && m.provider === 'whisper' && m.name === configuredModel) ||
+        (configuredProvider === 'localQwen' && m.provider === 'localQwen' && m.name === configuredModel) ||
         (configuredProvider === 'parakeet' && m.provider === 'parakeet' && m.name === configuredModel)
     );
 
@@ -96,9 +105,12 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
       if (configuredMatch) {
         // Use the configured model if available
         setSelectedModelKey(`${configuredMatch.provider}:${configuredMatch.name}`);
-      } else if (allModels.length > 0) {
+      } else if (!configuredModel && allModels.length > 0) {
         // Fall back to first available model
         setSelectedModelKey(`${allModels[0].provider}:${allModels[0].name}`);
+      } else {
+        // Missing configured weights must not silently switch to another engine.
+        setSelectedModelKey('');
       }
     }
 

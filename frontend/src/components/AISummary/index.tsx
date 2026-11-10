@@ -1,5 +1,6 @@
 'use client';
 
+import { copyText } from '@/lib/clipboard';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Summary, Block } from '@/types';
 import { Section } from './Section';
@@ -423,7 +424,7 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
             return '';
           }).filter(Boolean);
 
-          navigator.clipboard.writeText(blockContents.join('\n'));
+          void copyText(blockContents.join('\n'));
         }
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBlocks.length > 1) {
         e.preventDefault();
@@ -520,7 +521,7 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
 
   const handleCopyBlocks = useCallback(() => {
     const content = getSelectedBlocksContent();
-    navigator.clipboard.writeText(content);
+    void copyText(content);
     setContextMenu(prev => ({ ...prev, visible: false }));
   }, [getSelectedBlocksContent]);
 
@@ -770,7 +771,7 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
           <button
             onClick={() => {
               const markdown = convertToMarkdown();
-              navigator.clipboard.writeText(markdown);
+              void copyText(markdown);
             }}
             className="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md flex items-center space-x-1"
           >

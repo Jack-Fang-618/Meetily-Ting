@@ -266,6 +266,7 @@ pub async fn start_import<R: Runtime>(
     // Reset cancellation flag
     IMPORT_CANCELLED.store(false, Ordering::SeqCst);
 
+    let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_import(
         app.clone(),
@@ -278,7 +279,9 @@ pub async fn start_import<R: Runtime>(
     .await;
 
     // Unload the engine after the batch job (success, failure, or cancellation)
-    super::common::unload_engine_after_batch(use_parakeet).await;
+    if use_qwen {
+        if !super::recording_commands::is_recording().await { super::transcription::mlx_provider::shutdown().await; }
+    } else { super::common::unload_engine_after_batch(use_parakeet).await; }
 
     // Guard will automatically clear flag on drop
     // No need for manual: IMPORT_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -330,6 +333,10 @@ async fn run_import<R: Runtime>(
     );
 
     // Determine which provider to use (default to whisper)
+    if !matches!(provider.as_deref(), None | Some("whisper") | Some("localWhisper") | Some("parakeet") | Some("localQwen")) {
+        return Err(anyhow!("Unsupported transcription provider"));
+    }
+    let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
 
     emit_progress(&app, "copying", 5, "Creating meeting folder...");
@@ -509,7 +516,11 @@ async fn run_import<R: Runtime>(
     emit_progress(&app, "transcribing", 30, "Loading transcription engine...");
 
     // Initialize the appropriate engine
-    let whisper_engine = if !use_parakeet && total_segments > 0 {
+    let qwen_engine = if use_qwen {
+        use super::transcription::mlx_provider::{root, MlxProvider};
+        Some(MlxProvider::load(root(&app).map_err(|e| anyhow!(e))?, model.clone().ok_or_else(|| anyhow!("Select a Qwen model"))?).await.map_err(|e| anyhow!(e))?)
+    } else { None };
+    let whisper_engine = if !use_qwen && !use_parakeet && total_segments > 0 {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
@@ -523,18 +534,21 @@ async fn run_import<R: Runtime>(
     // Split very long segments at silence boundaries for better transcription quality.
     // Hard cuts at arbitrary sample positions lose words at boundaries. Instead, scan
     // for the lowest-energy window near the target split point and cut there.
-    const MAX_SEGMENT_SAMPLES: usize = 25 * 16000; // 25 seconds at 16kHz
+    let input_policy = super::transcription::input_policy::policy(
+        if use_qwen { "qwen" } else if use_parakeet { "parakeet" } else { "whisper" }
+    ).map_err(|e| anyhow!(e))?;
+    let max_segment_samples = input_policy.max_samples;
 
     let mut processable_segments: Vec<crate::audio::vad::SpeechSegment> = Vec::new();
     for segment in &speech_segments {
-        if segment.samples.len() > MAX_SEGMENT_SAMPLES {
+        if segment.samples.len() > max_segment_samples {
             debug!(
                 "Splitting large segment ({:.0}ms, {} samples) at silence boundaries",
                 segment.end_timestamp_ms - segment.start_timestamp_ms,
                 segment.samples.len()
             );
 
-            let sub_segments = split_segment_at_silence(segment, MAX_SEGMENT_SAMPLES);
+            let sub_segments = split_segment_at_silence(segment, input_policy);
             debug!("Split into {} sub-segments", sub_segments.len());
             processable_segments.extend(sub_segments);
         } else {
@@ -569,10 +583,10 @@ async fn run_import<R: Runtime>(
             ),
         );
 
-        // Skip very short segments
-        if segment.samples.len() < 1600 {
+        // Only skip empty input; short tails are padded by the engine.
+        if segment.samples.is_empty() {
             debug!(
-                "Skipping short segment {} with {} samples",
+                "Skipping empty segment {} with {} samples",
                 i,
                 segment.samples.len()
             );
@@ -580,7 +594,11 @@ async fn run_import<R: Runtime>(
         }
 
         // Transcribe
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_qwen {
+            use super::transcription::TranscriptionProvider;
+            let result = qwen_engine.as_ref().unwrap().transcribe(segment.samples.clone(), language.clone()).await.map_err(|e| anyhow!(e))?;
+            (result.text, -1.0f32) // Unknown confidence; not a measured score.
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())
@@ -1119,7 +1137,7 @@ mod tests {
             end_timestamp_ms: 1000.0,
             confidence: 0.9,
         };
-        let result = split_segment_at_silence(&segment, 25 * 16000);
+        let result = split_segment_at_silence(&segment, super::super::transcription::input_policy::policy("whisper").unwrap());
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].samples.len(), 16000);
     }
@@ -1139,7 +1157,7 @@ mod tests {
             confidence: 0.9,
         };
 
-        let result = split_segment_at_silence(&segment, 25 * 16000);
+        let result = split_segment_at_silence(&segment, super::super::transcription::input_policy::policy("whisper").unwrap());
         assert!(result.len() >= 2, "Should split into at least 2 segments, got {}", result.len());
 
         // All sub-segments should have samples
@@ -1154,8 +1172,8 @@ mod tests {
     }
 
     #[test]
-    fn test_split_segment_at_silence_no_silence_uses_overlap() {
-        // Continuous speech (constant energy) — should still split with overlap
+    fn test_split_segment_at_silence_no_silence_preserves_samples() {
+        // Continuous speech must stay bounded without losing or duplicating samples.
         let segment = crate::audio::vad::SpeechSegment {
             samples: vec![0.5f32; 60 * 16000], // 60 seconds of "speech"
             start_timestamp_ms: 0.0,
@@ -1163,12 +1181,13 @@ mod tests {
             confidence: 0.9,
         };
 
-        let result = split_segment_at_silence(&segment, 25 * 16000);
+        let result = split_segment_at_silence(&segment, super::super::transcription::input_policy::policy("whisper").unwrap());
         assert!(result.len() >= 2);
 
-        // Total samples should exceed input due to overlap
+        // Every original sample appears exactly once.
         let total_samples: usize = result.iter().map(|s| s.samples.len()).sum();
-        assert!(total_samples >= 60 * 16000, "Overlap should not lose samples");
+        assert_eq!(total_samples, 60 * 16000);
+        assert!(result.iter().all(|s| s.samples.len() <= 400000));
     }
 
     #[test]
