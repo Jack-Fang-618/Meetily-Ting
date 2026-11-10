@@ -862,6 +862,10 @@ pub fn run() {
             // Import audio commands
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
+            audio::transcription::aliyun::aliyun_status,
+            audio::transcription::aliyun::aliyun_save_config,
+            audio::transcription::aliyun::aliyun_delete_key,
+            audio::transcription::aliyun::aliyun_test_connection,
             audio::import::start_import_audio_command,
             audio::transcription::model_management::select_transcription_model,
             audio::transcription::model_management::delete_transcription_model,

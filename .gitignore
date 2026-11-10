@@ -81,3 +81,9 @@ frontend/src-tauri/binaries/
 .ting-runtime/
 .ting-convert/
 __pycache__/
+
+# User-owned cloud credentials must never be published
+.env.*
+!.env.example
+!**/.env.example
+**/secrets.json

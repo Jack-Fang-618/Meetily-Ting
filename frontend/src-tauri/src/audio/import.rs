@@ -266,6 +266,7 @@ pub async fn start_import<R: Runtime>(
     // Reset cancellation flag
     IMPORT_CANCELLED.store(false, Ordering::SeqCst);
 
+    let use_cloud = provider.as_deref() == Some("aliyun");
     let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_import(
@@ -281,7 +282,7 @@ pub async fn start_import<R: Runtime>(
     // Unload the engine after the batch job (success, failure, or cancellation)
     if use_qwen {
         if !super::recording_commands::is_recording().await { super::transcription::mlx_provider::shutdown().await; }
-    } else { super::common::unload_engine_after_batch(use_parakeet).await; }
+    } else if !use_cloud { super::common::unload_engine_after_batch(use_parakeet).await; }
 
     // Guard will automatically clear flag on drop
     // No need for manual: IMPORT_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -333,11 +334,19 @@ async fn run_import<R: Runtime>(
     );
 
     // Determine which provider to use (default to whisper)
-    if !matches!(provider.as_deref(), None | Some("whisper") | Some("localWhisper") | Some("parakeet") | Some("localQwen")) {
+    if !matches!(provider.as_deref(), None | Some("whisper") | Some("localWhisper") | Some("parakeet") | Some("localQwen") | Some("aliyun")) {
         return Err(anyhow!("Unsupported transcription provider"));
     }
+    let use_cloud = provider.as_deref() == Some("aliyun");
     let use_qwen = provider.as_deref() == Some("localQwen");
     let use_parakeet = provider.as_deref() == Some("parakeet");
+
+    if use_cloud {
+        let size = std::fs::metadata(&source)?.len();
+        if size == 0 || size > 1024 * 1024 * 1024 {
+            return Err(anyhow!("Cloud temporary uploads require a nonempty file no larger than 1 GiB"));
+        }
+    }
 
     emit_progress(&app, "copying", 5, "Creating meeting folder...");
 
@@ -378,6 +387,17 @@ async fn run_import<R: Runtime>(
         return Err(anyhow!("Import cancelled"));
     }
 
+    let (duration_seconds, all_transcripts) = if use_cloud {
+        let info = validate_audio_file(&dest_path)?;
+        if info.duration_seconds > 43200.0 || info.size_bytes > 1024 * 1024 * 1024 {
+            return Err(anyhow!("Cloud file import supports at most 12 hours and 1 GiB with temporary storage"));
+        }
+        let texts = super::transcription::aliyun::import_file(&app, &dest_path,
+            model.as_deref().ok_or_else(|| anyhow!("Select a cloud file model"))?, language.as_deref(),
+            |message| emit_progress(&app, "cloud", 30, message),
+            || IMPORT_CANCELLED.load(Ordering::SeqCst)).await?;
+        (info.duration_seconds, texts)
+    } else {
     emit_progress(&app, "decoding", 15, "Decoding audio file...");
 
     // Decode the audio file with progress updates
@@ -640,6 +660,9 @@ async fn run_import<R: Runtime>(
         "Transcription complete: {} segments transcribed out of {}, avg confidence: {:.2}",
         transcribed_count, processable_count, avg_confidence
     );
+
+        (duration_seconds, all_transcripts)
+    };
 
     // Check for cancellation
     if IMPORT_CANCELLED.load(Ordering::SeqCst) {
@@ -988,7 +1011,11 @@ pub async fn start_import_audio_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    cloud_consent: Option<bool>,
 ) -> Result<ImportStarted, String> {
+    if provider.as_deref() == Some("aliyun") && cloud_consent != Some(true) {
+        return Err("Confirm audio upload and account billing before cloud transcription".into());
+    }
     // Check if import is already in progress (guard will be acquired in start_import)
     if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
         return Err("Import already in progress".to_string());

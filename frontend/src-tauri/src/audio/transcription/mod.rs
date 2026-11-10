@@ -29,3 +29,5 @@ pub mod mlx_provider;
 pub mod input_policy;
 
 pub mod model_management;
+
+pub mod aliyun;

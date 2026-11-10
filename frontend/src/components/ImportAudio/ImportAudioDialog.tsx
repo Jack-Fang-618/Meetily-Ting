@@ -1,3 +1,4 @@
+import { ALIYUN_LANGUAGES } from '../../lib/aliyun';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Upload,
@@ -75,6 +76,7 @@ export function ImportAudioDialog({
   const { selectedLanguage, transcriptModelConfig } = useConfig();
 
   const [title, setTitle] = useState('');
+  const [cloudConsent, setCloudConsent] = useState(false);
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
 
@@ -91,7 +93,7 @@ export function ImportAudioDialog({
     loadingModels,
     fetchModels,
     resetSelection,
-  } = useTranscriptionModels(transcriptModelConfig);
+  } = useTranscriptionModels(transcriptModelConfig, true);
 
   const handleImportComplete = useCallback((result: ImportResult) => {
     toast.success(`Import complete! ${result.segments_count} segments created.`);
@@ -134,6 +136,7 @@ export function ImportAudioDialog({
     if (open && !wasOpen) {
       reset();
       resetSelection();
+      setCloudConsent(false);
       setTitle('');
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
@@ -167,6 +170,9 @@ export function ImportAudioDialog({
     const name = selectedModelKey.slice(colonIndex + 1);
     return availableModels.find((m) => m.provider === provider && m.name === name);
   }, [selectedModelKey, availableModels]);
+  const isCloudModel = selectedModel?.provider === 'aliyun';
+  useEffect(() => { setCloudConsent(false); }, [selectedModelKey, fileInfo?.path]);
+  useEffect(() => { if (isCloudModel && !ALIYUN_LANGUAGES.has(selectedLang)) setSelectedLang('auto'); }, [isCloudModel, selectedLang]);
   const isParakeetModel = selectedModel?.provider === 'parakeet';
 
   useEffect(() => {
@@ -187,21 +193,22 @@ export function ImportAudioDialog({
   };
 
   const handleStartImport = async () => {
-    if (!fileInfo || !selectedModel || loadingModels) return;
+    if (!fileInfo || !selectedModel || loadingModels || (isCloudModel && !cloudConsent)) return;
 
     await startImport(
       fileInfo.path,
       title || fileInfo.filename,
       isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang,
       selectedModel?.name || null,
-      selectedModel?.provider || null
+      selectedModel?.provider || null,
+      isCloudModel && cloudConsent
     );
   };
 
   const handleCancel = async () => {
     if (isProcessing) {
       await cancelImport();
-      toast.info('Import cancelled');
+      toast.info(isCloudModel ? 'Stopped waiting. The cloud task may continue and incur charges; importing this file again resumes it.' : 'Import cancelled');
     }
     onOpenChange(false);
   };
@@ -344,7 +351,7 @@ export function ImportAudioDialog({
                               <SelectValue placeholder="Select language" />
                             </SelectTrigger>
                             <SelectContent className="max-h-60">
-                              {LANGUAGES.filter(lang => selectedModel?.provider !== 'localQwen' || QWEN_LANGUAGE_CODES.has(lang.code)).map((lang) => (
+                              {LANGUAGES.filter(lang => (!isCloudModel || ALIYUN_LANGUAGES.has(lang.code)) && (selectedModel?.provider !== 'localQwen' || QWEN_LANGUAGE_CODES.has(lang.code))).map((lang) => (
                                 <SelectItem key={lang.code} value={lang.code}>
                                   {lang.name}
                                 </SelectItem>
@@ -401,6 +408,10 @@ export function ImportAudioDialog({
             </>
           )}
 
+          {isCloudModel && !isProcessing && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm space-y-2">
+            <p>This uploads the selected audio to Alibaba Cloud in {selectedModel?.destination}. Your account is billed. Temporary uploads expire within 48 hours; only the first audio track is transcribed.</p>
+            <label className="flex items-start gap-2"><input type="checkbox" checked={cloudConsent} onChange={e => setCloudConsent(e.target.checked)} />I agree to upload this audio and use my account quota.</label>
+          </div>}
           {/* Progress display */}
           {isProcessing && progress && (
             <div className="space-y-2">
@@ -408,12 +419,12 @@ export function ImportAudioDialog({
                 <div className="w-full bg-gray-200 rounded-full h-3">
                   <div
                     className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${Math.min(progress.progress_percentage, 100)}%` }}
+                    style={{ width: progress.stage === 'cloud' ? '100%' : `${Math.min(progress.progress_percentage, 100)}%`, opacity: progress.stage === 'cloud' ? 0.5 : 1 }}
                   />
                 </div>
                 <div className="flex justify-between text-xs text-gray-600 mt-1">
                   <span>{progress.stage}</span>
-                  <span>{Math.round(progress.progress_percentage)}%</span>
+                  <span>{progress.stage === 'cloud' ? 'In progress' : `${Math.round(progress.progress_percentage)}%`}</span>
                 </div>
               </div>
               <p className="text-sm text-muted-foreground text-center">{progress.message}</p>
@@ -437,7 +448,7 @@ export function ImportAudioDialog({
               <Button
                 onClick={handleStartImport}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!fileInfo || !selectedModel || loadingModels}
+                disabled={!fileInfo || !selectedModel || loadingModels || (isCloudModel && !cloudConsent)}
               >
                 <Upload className="h-4 w-4 mr-2" />
                 Import
@@ -447,7 +458,7 @@ export function ImportAudioDialog({
           {isProcessing && (
             <Button variant="outline" onClick={handleCancel}>
               <X className="h-4 w-4 mr-2" />
-              Cancel
+              {isCloudModel ? 'Stop waiting' : 'Cancel'}
             </Button>
           )}
           {error && (

@@ -1,3 +1,4 @@
+import { cloudImportOptions, AliyunStatus } from '../lib/aliyun';
 import { localModelLabel } from '../lib/local-model-labels';
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,10 +10,11 @@ export interface RawModelInfo {
 }
 
 export interface ModelOption {
-  provider: 'whisper' | 'parakeet' | 'localQwen';
+  provider: 'whisper' | 'parakeet' | 'localQwen' | 'aliyun';
   name: string;
   displayName: string;
   size_mb: number;
+  destination?: string;
 }
 
 interface TranscriptModelConfig {
@@ -29,7 +31,7 @@ interface TranscriptModelConfig {
  * @param transcriptModelConfig - User's saved model configuration from context
  * @returns Object containing available models, selected model key, loading state, and fetch function
  */
-export function useTranscriptionModels(transcriptModelConfig: TranscriptModelConfig | undefined) {
+export function useTranscriptionModels(transcriptModelConfig: TranscriptModelConfig | undefined, includeCloud = false) {
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [selectedModelKey, setSelectedModelKey] = useState<string>('');
   const [loadingModels, setLoadingModels] = useState(false);
@@ -86,11 +88,18 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
         provider: 'localQwen' as const, name: m.id, displayName: localModelLabel(m.id, m.label), size_mb: m.size_mb,
       })));
     } catch (err) { console.error('Failed to fetch local Qwen models:', err); }
+    if (includeCloud) {
+      try {
+        const cloud = await invoke<AliyunStatus>('aliyun_status');
+        allModels.push(...cloudImportOptions(cloud));
+      } catch (err) { console.error('Could not load cloud model configuration:', err); }
+    }
     setAvailableModels(allModels);
 
     // Set default model based on user's saved configuration
     const configuredProvider = transcriptModelConfig?.provider || '';
     const configuredModel = transcriptModelConfig?.model || '';
+    const firstLocal = allModels.find(m => m.provider !== 'aliyun');
 
     // Try to match the configured model
     // Note: 'localWhisper' in config maps to 'whisper' provider in model list
@@ -106,9 +115,9 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
       if (configuredMatch) {
         // Use the configured model if available
         setSelectedModelKey(`${configuredMatch.provider}:${configuredMatch.name}`);
-      } else if (!configuredModel && allModels.length > 0) {
+      } else if (!configuredModel && firstLocal) {
         // Fall back to first available model
-        setSelectedModelKey(`${allModels[0].provider}:${allModels[0].name}`);
+        setSelectedModelKey(`${firstLocal.provider}:${firstLocal.name}`);
       } else {
         // Missing configured weights must not silently switch to another engine.
         setSelectedModelKey('');
@@ -116,7 +125,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     }
 
     setLoadingModels(false);
-  }, [transcriptModelConfig]);
+  }, [transcriptModelConfig, includeCloud]);
 
   // Reset user selection tracking (call when dialog opens fresh)
   const resetSelection = useCallback(() => {

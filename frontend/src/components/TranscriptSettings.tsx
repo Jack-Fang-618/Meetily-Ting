@@ -1,3 +1,4 @@
+import { AliyunSettings } from './AliyunSettings';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -181,6 +182,8 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </div>
                     )}
 
+
+                    <AliyunSettings />
 
                     {requiresApiKey && (
                         <div>
