@@ -53,6 +53,33 @@ pub fn ranges(audio: &[f32], p: InputPolicy) -> Result<Vec<Range<usize>>, String
     Ok(out)
 }
 
+/// Batch Parakeet must retain quiet speech: Silero's binary speech gate can
+/// reject entire low-level utterances before ASR sees them. Use the same bounded,
+/// sample-complete windows as the engine. Other providers keep their VAD path.
+pub fn file_segments_with_progress<F>(audio: &[f32], engine: &str, redemption_ms: u32, mut progress: F)
+    -> Result<Vec<crate::audio::vad::SpeechSegment>, String>
+where F: FnMut(u32, usize) -> bool {
+    let p = policy(engine)?;
+    if engine != "parakeet" {
+        return crate::audio::vad::get_speech_chunks_with_progress(audio, redemption_ms, progress)
+            .map_err(|e| e.to_string());
+    }
+    if !progress(0, 0) { return Err("Audio preparation cancelled".into()); }
+    let spans = ranges(audio, p)?;
+    let mut segments = Vec::with_capacity(spans.len());
+    for span in spans {
+        let start_timestamp_ms = span.start as f64 * 1000.0 / p.sample_rate as f64;
+        let end_timestamp_ms = span.end as f64 * 1000.0 / p.sample_rate as f64;
+        let percent = (span.end as f64 / audio.len() as f64 * 100.0) as u32;
+        segments.push(crate::audio::vad::SpeechSegment {
+            samples: audio[span].to_vec(), start_timestamp_ms, end_timestamp_ms,
+            confidence: -1.0, // No speech classifier or calibrated confidence here.
+        });
+        if !progress(percent, segments.len()) { return Err("Audio preparation cancelled".into()); }
+    }
+    Ok(segments)
+}
+
 /// All public engine entry points use this guard, including live, import and retry.
 /// Short tails are zero-padded rather than silently discarded.
 pub async fn transcribe_bounded<F, Fut>(audio: Vec<f32>, p: InputPolicy, mut infer: F)
@@ -86,6 +113,21 @@ where F: FnMut(Vec<f32>) -> Fut,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parakeet_file_windows_preserve_quiet_audio_and_absolute_times() {
+        let p = policy("parakeet").unwrap();
+        assert_eq!(p.max_samples, 240000);
+        let mut audio = vec![0.00001; 1_184_640];
+        audio[210000..218000].fill(0.0);
+        let parts = file_segments_with_progress(&audio, "parakeet", 2000, |_, _| true).unwrap();
+        assert_eq!(parts.iter().flat_map(|s| s.samples.iter().copied()).collect::<Vec<_>>(), audio);
+        assert_eq!(parts.first().unwrap().start_timestamp_ms, 0.0);
+        assert_eq!(parts.last().unwrap().end_timestamp_ms, 74040.0);
+        for pair in parts.windows(2) { assert_eq!(pair[0].end_timestamp_ms, pair[1].start_timestamp_ms); }
+        assert!(parts.iter().all(|s| s.samples.len() <= p.max_samples));
+        assert!(file_segments_with_progress(&audio, "parakeet", 2000, |_, _| false).is_err());
+        assert!(file_segments_with_progress(&[f32::NAN], "parakeet", 2000, |_, _| true).is_err());
+    }
     #[tokio::test]
     async fn every_engine_bounds_long_audio_and_preserves_short_tails() {
         for name in ["whisper", "parakeet", "qwen"] {

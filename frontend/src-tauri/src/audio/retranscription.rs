@@ -1,7 +1,7 @@
 // Retranscription module - allows re-processing stored audio with different settings
 
 use crate::audio::decoder::decode_audio_file;
-use crate::audio::vad::get_speech_chunks_with_progress;
+use crate::audio::transcription::input_policy::file_segments_with_progress;
 use super::common::{create_transcript_segments, split_segment_at_silence, write_transcripts_json};
 use super::constants::AUDIO_EXTENSIONS;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
@@ -233,22 +233,23 @@ async fn run_retranscription<R: Runtime>(
     .map_err(|e| anyhow!("Resample task panicked: {}", e))?;
     info!("Converted to 16kHz mono format: {} samples", audio_samples.len());
 
-    emit_progress(&app, &meeting_id, "vad", 20, "Detecting speech segments...");
+    emit_progress(&app, &meeting_id, "vad", 20, "Preparing audio segments...");
 
     // Check for cancellation
     if RETRANSCRIPTION_CANCELLED.load(Ordering::SeqCst) {
         return Err(anyhow!("Retranscription cancelled"));
     }
 
-    // Use VAD to find natural speech boundaries (same approach as live transcription)
+    // Use shared file segmentation (sample-complete for Parakeet, VAD for other providers).
     // IMPORTANT: Run VAD in a blocking task to avoid blocking the async runtime
     // For large files (35+ minutes), VAD processing can take several minutes
     let app_for_vad = app.clone();
     let meeting_id_for_vad = meeting_id.clone();
 
     let speech_segments = tokio::task::spawn_blocking(move || {
-        get_speech_chunks_with_progress(
+        file_segments_with_progress(
             &audio_samples,
+            if use_parakeet { "parakeet" } else if use_qwen { "qwen" } else { "whisper" },
             VAD_REDEMPTION_TIME_MS,
             |vad_progress, segments_found| {
                 // Map VAD progress (0-100) to overall progress (20-25)
@@ -258,7 +259,7 @@ async fn run_retranscription<R: Runtime>(
                     &meeting_id_for_vad,
                     "vad",
                     overall_progress,
-                    &format!("Detecting speech segments... {}% ({} found)", vad_progress, segments_found),
+                    &format!("Preparing audio segments... {}% ({} found)", vad_progress, segments_found),
                 );
 
                 // Return false to cancel if cancellation requested
@@ -267,11 +268,11 @@ async fn run_retranscription<R: Runtime>(
         )
     })
     .await
-    .map_err(|e| anyhow!("VAD task panicked: {}", e))?
-    .map_err(|e| anyhow!("VAD processing failed: {}", e))?;
+    .map_err(|e| anyhow!("Audio segmentation task panicked: {}", e))?
+    .map_err(|e| anyhow!("Audio segmentation failed: {}", e))?;
 
     let total_segments = speech_segments.len();
-    info!("VAD detected {} speech segments (redemption_time={}ms)", total_segments, VAD_REDEMPTION_TIME_MS);
+    info!("Prepared {} audio segments (redemption_time={}ms)", total_segments, VAD_REDEMPTION_TIME_MS);
 
     // Diagnostic: log segment duration distribution
     if !speech_segments.is_empty() {

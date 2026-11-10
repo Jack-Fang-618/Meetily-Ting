@@ -2,7 +2,7 @@
 
 use crate::api::TranscriptSegment;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
-use crate::audio::vad::get_speech_chunks_with_progress;
+use crate::audio::transcription::input_policy::file_segments_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
 use crate::parakeet_engine::ParakeetEngine;
 use crate::state::AppState;
@@ -427,7 +427,7 @@ async fn run_import<R: Runtime>(
         audio_samples.len()
     );
 
-    emit_progress(&app, "vad", 25, "Detecting speech segments...");
+    emit_progress(&app, "vad", 25, "Preparing audio segments...");
 
     // Check for cancellation
     if IMPORT_CANCELLED.load(Ordering::SeqCst) {
@@ -435,12 +435,13 @@ async fn run_import<R: Runtime>(
         return Err(anyhow!("Import cancelled"));
     }
 
-    // Use VAD to find speech segments
+    // Preserve all Parakeet file audio; other providers retain VAD detection.
     let app_for_vad = app.clone();
 
     let speech_segments = tokio::task::spawn_blocking(move || {
-        get_speech_chunks_with_progress(
+        file_segments_with_progress(
             &audio_samples,
+            if use_parakeet { "parakeet" } else if use_qwen { "qwen" } else { "whisper" },
             VAD_REDEMPTION_TIME_MS,
             |vad_progress, segments_found| {
                 let overall_progress = 25 + (vad_progress as f32 * 0.05) as u32;
@@ -449,7 +450,7 @@ async fn run_import<R: Runtime>(
                     "vad",
                     overall_progress,
                     &format!(
-                        "Detecting speech segments... {}% ({} found)",
+                        "Preparing audio segments... {}% ({} found)",
                         vad_progress, segments_found
                     ),
                 );
@@ -458,11 +459,11 @@ async fn run_import<R: Runtime>(
         )
     })
     .await
-    .map_err(|e| anyhow!("VAD task panicked: {}", e))?
-    .map_err(|e| anyhow!("VAD processing failed: {}", e))?;
+    .map_err(|e| anyhow!("Audio segmentation task panicked: {}", e))?
+    .map_err(|e| anyhow!("Audio segmentation failed: {}", e))?;
 
     let total_segments = speech_segments.len();
-    info!("VAD detected {} speech segments (redemption_time={}ms)", total_segments, VAD_REDEMPTION_TIME_MS);
+    info!("Prepared {} audio segments (redemption_time={}ms)", total_segments, VAD_REDEMPTION_TIME_MS);
 
     // Diagnostic: log segment duration distribution
     if !speech_segments.is_empty() {

@@ -68,6 +68,30 @@ pub async fn delete_transcription_model<R: Runtime>(app: AppHandle<R>, provider:
 
 #[cfg(test)]
 mod tests {
+    /// Content regression: a non-empty transcript used to hide two lost utterances.
+    #[tokio::test]
+    #[ignore]
+    async fn installed_parakeet_long_fixture_covers_all_utterances() {
+        let root = std::path::PathBuf::from(std::env::var("TING_TEST_MODELS").unwrap());
+        let audio = std::path::PathBuf::from(std::env::var("TING_TEST_AUDIO").unwrap());
+        let samples = crate::audio::decoder::decode_audio_file(&audio).unwrap().to_whisper_format();
+        let engine = crate::parakeet_engine::ParakeetEngine::new_with_models_dir(Some(root)).unwrap();
+        engine.discover_models().await.unwrap();
+        engine.load_model("parakeet-tdt-0.6b-v3-int8").await.unwrap();
+        let direct = engine.transcribe_audio(samples.clone()).await.unwrap();
+        let segments = super::super::input_policy::file_segments_with_progress(&samples, "parakeet", 2000, |_, _| true).unwrap();
+        let mut batch = Vec::new();
+        for segment in segments { batch.push(engine.transcribe_audio(segment.samples).await.unwrap()); }
+        let batch = batch.join("\n");
+        assert_eq!(direct, batch, "batch preparation must not lose samples or change the engine windows");
+        let lower = direct.to_lowercase();
+        for anchor in ["communication channels", "all nouns", "sintra", "cabbage juice", "feathers", "infection control", "northern", "genetic variation"] {
+            assert!(lower.contains(anchor), "Missing {anchor}: {direct}");
+            assert_eq!(lower.matches(anchor).count(), 1, "Duplicated {anchor}");
+        }
+        assert!(engine.transcribe_audio(vec![0.0; 160000]).await.unwrap().trim().is_empty());
+        engine.unload_model().await;
+    }
     /// Explicit opt-in: uses existing weights and synthetic fixtures, never downloads.
     #[tokio::test]
     #[ignore]

@@ -10,9 +10,9 @@
   "parakeet": {
     "sample_rate": 16000,
     "channels": 1,
-    "max_samples": 400000,
+    "max_samples": 240000,
     "min_samples": 1600,
-    "search_samples": 80000,
+    "search_samples": 160000,
     "frame_samples": 320
   },
   "qwen": {

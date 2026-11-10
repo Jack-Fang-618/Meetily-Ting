@@ -4,7 +4,6 @@ Requires opencc-python-reimplemented==0.1.7 (install separately from the app run
 """
 import argparse
 import collections
-import difflib
 import html
 import json
 import re
@@ -42,8 +41,15 @@ def main():
     p.add_argument('--results',type=Path,required=True)
     a = p.parse_args()
     manifest = {x['file']:x for x in json.loads((a.pack/'manifest.json').read_text())}
-    rows = [json.loads(line) for name in ['parakeet.jsonl','qwen.jsonl']
+    rows = [json.loads(line) for name in ['parakeet.jsonl','qwen.jsonl','buzz.jsonl'] if (a.results/name).exists()
             for line in (a.results/name).read_text().splitlines()]
+    keys = [(r['model'], r['file'], r['mode']) for r in rows]
+    if len(keys) != len(set(keys)): raise ValueError('Duplicate results')
+    models = sorted({r['model'] for r in rows})
+    for model in models:
+        if {r['file'] for r in rows if r['model'] == model and r['mode'] == 'auto'} != set(manifest):
+            raise ValueError(f'Incomplete automatic-language test set: {model}')
+    description = f'本机 M1 / 16 GB；依次加载并运行，没有并发模型竞争。{len(manifest)} 个文件 × {len(models)} 个模型，含补充语言验证共 {len(rows)} 次转写。'
     scored, grouped = [], collections.defaultdict(list)
     for row in rows:
         group = row['file'].split('/')[0]
@@ -71,8 +77,8 @@ def main():
     (a.results/'scored.json').write_text(json.dumps(scored,ensure_ascii=False,indent=2))
     (a.results/'summary.json').write_text(json.dumps(summaries,ensure_ascii=False,indent=2))
     lines=['# 已安装模型公开语音对比 · 2026-11-10','',
-       '本机 M1 / 16 GB；依次加载并运行，没有并发模型竞争。30 个文件 × 3 个模型，另加两个 Qwen 各 8 个显式 English 用例，共 106 次转写。',
-       '模型加载时间单列于原始 JSONL，不计入下表。Parakeet 使用原生 debug 构建的实际解码/引擎入口；Qwen 使用实际离线 Python worker（含 JSON 通信）。不是严格同运行时速度排名，也不是完整 GUI/实时采集验收。','',
+       description,
+       '模型加载时间单列于原始 JSONL，不计入下表。Parakeet / BuzzASR 使用原生 debug 构建的实际解码/引擎入口；Qwen 使用实际离线 Python worker（含 JSON 通信）。不是严格同运行时速度排名，也不是完整 GUI/实时采集验收。','',
        '| 模型 | 语言设置 | 类别 | 文件数 | 错误率 ↓ | 耗时 | 音频时长 | RTF ↓ | 运行报错 |',
        '|---|---|---|---:|---:|---:|---:|---:|---:|']
     for x in summaries:
@@ -109,9 +115,10 @@ def main():
     limitations = lines[lines.index('## 读数边界')+2:lines.index('## 逐条原文对照')]
     page = '''<!doctype html><html lang="zh"><meta charset="utf-8"><title>Ting 模型对比</title>
 <style>body{max-width:1200px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#17202a;background:#fafafa}table{border-collapse:collapse;font-size:14px;width:100%}th,td{padding:10px;text-align:left;border-bottom:1px solid #ddd}details{background:white;border:1px solid #ddd;padding:16px;margin:12px 0}summary{cursor:pointer;font-weight:600}p{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#555}.table{overflow:auto}</style>
-<body><h1>Ting 已安装模型对比</h1><p>2026-11-10 · M1 / 16 GB · 本机离线 · 30 个音频文件 · 106 次转写</p>
+<body><h1>Ting 已安装模型对比</h1><p>REPORT_DESCRIPTION</p>
 <p>错误率越低越好；WER 按英文词、CER 按字符，不能互比。小样本结果不代表所有会议。Parakeet 的普通话和粤语结果属于官方不支持的语言范围。</p>
 <div class="table"><table><thead><tr><th>模型</th><th>语言设置</th><th>类别</th><th>错误率 ↓</th><th>耗时</th><th>RTF ↓</th><th>运行报错</th></tr></thead><tbody>'''
+    page = page.replace('REPORT_DESCRIPTION', h(description))
     page += table+'</tbody></table></div><h2>如何解读</h2><p>'+h('\n'.join(limitations))+'</p><h2>逐条查看参考稿与模型输出</h2>'+''.join(details)+'</body></html>'
     (a.results/'report.html').write_text(page)
     for x in summaries: print(x['model'],x['mode'],x['group'],f'{x["error_rate"]:.1%}',f'RTF {x["rtf"]:.2f}',f'errors={x["errors"]}')
