@@ -39,6 +39,7 @@ pub mod analytics;
 pub mod api;
 pub mod audio;
 pub mod config;
+mod captions;
 pub mod console_utils;
 pub mod database;
 pub mod notifications;
@@ -143,6 +144,7 @@ async fn start_recording<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
     meeting_name: Option<String>,
+    cloud_consent: Option<bool>,
 ) -> Result<(), String> {
     log_info!("🔥 CALLED start_recording with meeting: {:?}", meeting_name);
     log_info!(
@@ -162,6 +164,7 @@ async fn start_recording<R: Runtime>(
         mic_device_name,
         system_device_name,
         meeting_name.clone(),
+        cloud_consent.unwrap_or(false),
     )
     .await
     {
@@ -357,7 +360,7 @@ async fn start_recording_with_devices<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
 ) -> Result<(), String> {
-    start_recording_with_devices_and_meeting(app, mic_device_name, system_device_name, None).await
+    start_recording_with_devices_and_meeting(app, mic_device_name, system_device_name, None, None).await
 }
 
 #[tauri::command]
@@ -366,6 +369,7 @@ async fn start_recording_with_devices_and_meeting<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
     meeting_name: Option<String>,
+    cloud_consent: Option<bool>,
 ) -> Result<(), String> {
     log_info!("🚀 CALLED start_recording_with_devices_and_meeting - Mic: {:?}, System: {:?}, Meeting: {:?}",
              mic_device_name, system_device_name, meeting_name);
@@ -380,7 +384,7 @@ async fn start_recording_with_devices_and_meeting<R: Runtime>(
                 "No devices specified, starting with defaults and meeting: {:?}",
                 meeting_name
             );
-            audio::recording_commands::start_recording_with_meeting_name(app.clone(), meeting_name)
+            audio::recording_commands::start_recording_with_meeting_name(app.clone(), meeting_name, cloud_consent.unwrap_or(false))
                 .await
         }
         _ => {
@@ -395,6 +399,7 @@ async fn start_recording_with_devices_and_meeting<R: Runtime>(
                 mic_device_name,
                 system_device_name,
                 meeting_name,
+                cloud_consent.unwrap_or(false),
             )
             .await
         }
@@ -644,6 +649,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            captions::open_caption_window,
             dev_frontend_diagnostic,
             start_recording,
             stop_recording,
@@ -863,6 +869,7 @@ pub fn run() {
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
             audio::transcription::aliyun::aliyun_status,
+            audio::transcription::aliyun::aliyun_live_status,
             audio::transcription::aliyun::aliyun_save_config,
             audio::transcription::aliyun::aliyun_delete_key,
             audio::transcription::aliyun::aliyun_test_connection,

@@ -1,4 +1,4 @@
-export interface AliyunConfig { enabled: boolean; default_for_files: boolean; region: string; workspace: string; model: string; keep_dialect: boolean }
+export interface AliyunConfig { enabled: boolean; live_enabled?: boolean; live_model?: string; default_for_files: boolean; region: string; workspace: string; model: string; keep_dialect: boolean }
 export interface AliyunStatus { config: AliyunConfig; has_key: boolean }
 export const ALIYUN_MODELS = ['qwen-audio-3.1-asr-flash-filetrans', 'qwen-audio-3.0-asr-flash-filetrans'];
 export const ALIYUN_LANGUAGES = new Set(['auto','zh','yue','en','ja','ko','vi','th','id','ms','tl','hi','ar','fr','de','es','pt','ru','it','nl','sv','da','fi','no','el','pl','cs','hu','ro','bg','hr','sk']);
@@ -16,3 +16,5 @@ export function preferredCloudFileKey(status: AliyunStatus | null): string | nul
   return cloudImportOptions(status).some(m => m.name === status.config.model)
     ? `aliyun:${status.config.model}` : '';
 }
+
+export const ALIYUN_LIVE_MODELS = ['qwen-audio-3.1-asr-flash-streaming', 'qwen-audio-3.0-asr-flash-streaming'];

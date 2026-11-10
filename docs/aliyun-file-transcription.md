@@ -2,14 +2,14 @@
 
 ## Configure your account
 
-1. Open Settings → Transcription → Transcript Model → **Alibaba Cloud (Files only)**.
+1. Open Settings → Transcription → Transcript Model → **Alibaba Cloud (Live & files)**.
 2. Choose the region where your Bailian API Key was created: Beijing or Singapore. Enter your own key. Workspace ID is under **Advanced settings**; it is optional for the regional endpoint, or required to use your workspace-specific endpoint.
 3. Choose 3.1 (recommended starting point) or 3.0. **Preserve dialect wording** applies only to 3.1; keep it enabled for Cantonese verbatim transcription.
 4. Enable cloud transcription and select **Save & test connection** (or **Save settings**, then **Test connection**). This checks authentication/upload access without uploading audio or running transcription; it is not proof of model inference availability.
-5. Optionally select **Default for file imports** and save. This preference is independent of the live/local model; switching local recording models does not clear it. Uncheck it to restore local file defaults. Upload consent is still required for every file.
+5. Optionally select **Default for file imports** and save. This preference is independent of the live model; switching local recording models does not clear it. Uncheck it to restore local file defaults. Upload consent is still required for every file.
 6. Open Import Audio, select a cloud model and language (Auto for mixed language), and acknowledge upload/account billing for the selected file. Cloud is never chosen as an automatic fallback.
 
-Every installation starts with cloud disabled and no credentials. There is no author-owned default key, bundled key, `.env` fallback, or automatic migration from an older Ting installation. Keys are stored in the OS credential store; the UI only receives a `has_key` boolean. Removing a key disables cloud import for that saved region. Live recording and existing retranscription remain local in this phase.
+Every installation starts with cloud disabled and no credentials. There is no author-owned default key, bundled key, `.env` fallback, or automatic migration from an older Ting installation. Keys are stored in the OS credential store; the UI only receives a `has_key` boolean. Removing a key disables cloud import for that saved region. Existing retranscription remains local. Live cloud recording is a separate opt-in preference; see [live transcription](aliyun-live-transcription.md).
 
 ## Current limits and behavior
 

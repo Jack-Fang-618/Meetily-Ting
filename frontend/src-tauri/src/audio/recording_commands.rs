@@ -300,13 +300,14 @@ async fn prepare_audio_for_recording(
 
 /// Start recording with default devices
 pub async fn start_recording<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
-    start_recording_with_meeting_name(app, None).await
+    start_recording_with_meeting_name(app, None, false).await
 }
 
 /// Start recording with default devices and optional meeting name
 pub async fn start_recording_with_meeting_name<R: Runtime>(
     app: AppHandle<R>,
     meeting_name: Option<String>,
+    cloud_consent: bool,
 ) -> Result<(), String> {
     info!(
         "Starting recording with default devices, meeting: {:?}",
@@ -322,6 +323,8 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         return Err("Recording already in progress".to_string());
     }
 
+    let cloud_session = transcription::aliyun_streaming::prepare(&app, cloud_consent).await.map_err(|e| e.to_string())?;
+
     if let Err(error) = crate::ensure_onnx_runtime_available() {
         return Err(map_recording_start_error(
             &app,
@@ -331,7 +334,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
 
     // Validate that transcription models are available before starting recording
     info!("🔍 Validating transcription model availability before starting recording...");
-    if let Err(validation_error) = transcription::validate_transcription_model_ready(&app).await {
+    if let Err(validation_error) = if cloud_session.is_none() { transcription::validate_transcription_model_ready(&app).await } else { Ok(()) } {
         error!("Model validation failed: {}", validation_error);
 
         // Emit error event for frontend - actionable: false to show toast instead of modal
@@ -402,7 +405,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
 
     // Start recording with resolved devices (replaces start_recording_with_defaults_and_auto_save call)
     let transcription_receiver = manager
-        .start_recording(microphone_device, system_device, auto_save)
+        .start_recording(microphone_device, system_device, auto_save || cloud_session.is_some(), cloud_session.is_some())
         .await
         .map_err(|error| map_recording_start_error(&app, error))?;
 
@@ -428,7 +431,10 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
     drop(engine_lifecycle_guard);
 
     // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver);
+    let task_handle = match cloud_session {
+        Some(session) => transcription::aliyun_streaming::start(app.clone(), session, transcription_receiver),
+        None => transcription::start_transcription_task(app.clone(), transcription_receiver),
+    };
     {
         let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
         *global_task = Some(task_handle);
@@ -442,6 +448,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                if update.source == "Cloud" { return; } // Persisted synchronously by the cloud worker.
                 // Create structured transcript segment
                 let segment = crate::audio::recording_saver::TranscriptSegment {
                     id: format!("seg_{}", update.sequence_id),
@@ -488,7 +495,7 @@ pub async fn start_recording_with_devices<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
 ) -> Result<(), String> {
-    start_recording_with_devices_and_meeting(app, mic_device_name, system_device_name, None).await
+    start_recording_with_devices_and_meeting(app, mic_device_name, system_device_name, None, false).await
 }
 
 /// Start recording with specific devices and optional meeting name
@@ -497,6 +504,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     mic_device_name: Option<String>,
     system_device_name: Option<String>,
     meeting_name: Option<String>,
+    cloud_consent: bool,
 ) -> Result<(), String> {
     info!(
         "Starting recording with specific devices: mic={:?}, system={:?}, meeting={:?}",
@@ -512,6 +520,8 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         return Err("Recording already in progress".to_string());
     }
 
+    let cloud_session = transcription::aliyun_streaming::prepare(&app, cloud_consent).await.map_err(|e| e.to_string())?;
+
     if let Err(error) = crate::ensure_onnx_runtime_available() {
         return Err(map_recording_start_error(
             &app,
@@ -521,7 +531,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
 
     // Validate that transcription models are available before starting recording
     info!("🔍 Validating transcription model availability before starting recording...");
-    if let Err(validation_error) = transcription::validate_transcription_model_ready(&app).await {
+    if let Err(validation_error) = if cloud_session.is_none() { transcription::validate_transcription_model_ready(&app).await } else { Ok(()) } {
         error!("Model validation failed: {}", validation_error);
 
         // Emit error event for frontend - actionable: false to show toast instead of modal
@@ -589,7 +599,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
 
     // Start recording with specified devices and auto_save setting
     let transcription_receiver = manager
-        .start_recording(mic_device, system_device, auto_save)
+        .start_recording(mic_device, system_device, auto_save || cloud_session.is_some(), cloud_session.is_some())
         .await
         .map_err(|error| map_recording_start_error(&app, error))?;
 
@@ -615,7 +625,10 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
     drop(engine_lifecycle_guard);
 
     // Start optimized parallel transcription task and store handle
-    let task_handle = transcription::start_transcription_task(app.clone(), transcription_receiver);
+    let task_handle = match cloud_session {
+        Some(session) => transcription::aliyun_streaming::start(app.clone(), session, transcription_receiver),
+        None => transcription::start_transcription_task(app.clone(), transcription_receiver),
+    };
     {
         let mut global_task = TRANSCRIPTION_TASK.lock().unwrap();
         *global_task = Some(task_handle);
@@ -629,6 +642,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
         let listener_id = app.listen("transcript-update", move |event: tauri::Event| {
             // Parse the transcript update from the event payload
             if let Ok(update) = serde_json::from_str::<TranscriptUpdate>(event.payload()) {
+                if update.source == "Cloud" { return; } // Persisted synchronously by the cloud worker.
                 // Create structured transcript segment
                 let segment = crate::audio::recording_saver::TranscriptSegment {
                     id: format!("seg_{}", update.sequence_id),
@@ -808,6 +822,17 @@ pub async fn stop_recording<R: Runtime>(
         progress_task.abort();
     } else {
         info!("ℹ️ No transcription task found to wait for");
+    }
+
+    if let Some(manager) = manager_for_cleanup.as_ref() {
+        for update in CLOUD_TAIL.lock().unwrap().drain(..) {
+            manager.add_transcript_segment(crate::audio::recording_saver::TranscriptSegment {
+                id: format!("seg_{}", update.sequence_id), text: update.text,
+                audio_start_time: update.audio_start_time, audio_end_time: update.audio_end_time,
+                duration: update.duration, display_time: update.timestamp,
+                confidence: update.confidence, sequence_id: update.sequence_id,
+            });
+        }
     }
 
     // Step 3: Now safely unload Whisper model after ALL chunks are processed
@@ -1694,5 +1719,20 @@ async fn trigger_mic_fallback_to_default<R: Runtime>(
                 );
             }
         }
+    }
+}
+
+static CLOUD_TAIL: std::sync::Mutex<Vec<TranscriptUpdate>> = std::sync::Mutex::new(Vec::new());
+pub(crate) fn retain_cloud_tail(update: &TranscriptUpdate) {
+    let manager = RECORDING_MANAGER.lock().unwrap();
+    if let Some(manager) = manager.as_ref() {
+        manager.add_transcript_segment(crate::audio::recording_saver::TranscriptSegment {
+            id: format!("seg_{}", update.sequence_id), text:update.text.clone(),
+            audio_start_time:update.audio_start_time,audio_end_time:update.audio_end_time,
+            duration:update.duration,display_time:update.timestamp.clone(),confidence:update.confidence,
+            sequence_id:update.sequence_id,
+        });
+    } else if IS_RECORDING.load(Ordering::SeqCst) {
+        CLOUD_TAIL.lock().unwrap().push(update.clone());
     }
 }

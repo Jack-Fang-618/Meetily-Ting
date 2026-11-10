@@ -82,6 +82,8 @@ export function useRecordingStart(
   // Check the selected local transcription provider, not a hardcoded engine.
   const checkTranscriptionModelReady = useCallback(async (): Promise<boolean> => {
     try {
+      const cloud = await invoke<{config:{live_enabled?:boolean};has_key:boolean}>('aliyun_live_status');
+      if (cloud.config.live_enabled) return cloud.has_key;
       const provider = await getTranscriptionProvider();
       if (provider === 'localQwen') {
         const config = await invoke<TranscriptConfig>('api_get_transcript_config');
@@ -186,6 +188,7 @@ export function useRecordingStart(
     } catch (error) {
       console.error('Failed to start recording:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.startsWith('Cloud recording cancelled.')) { setStatus(RecordingStatus.IDLE); return; }
 
       // A racing second start that lost to a live recording must not clobber
       // the running recording's state. The winning start is live, so reflect
@@ -278,6 +281,7 @@ export function useRecordingStart(
           } catch (error) {
             console.error('Failed to auto-start recording:', error);
             const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.startsWith('Cloud recording cancelled.')) { setStatus(RecordingStatus.IDLE); return; }
             if (errorMsg.includes('already in progress')) {
               // Benign race — another start won and is live; skip ERROR/alert.
               setStatus(RecordingStatus.RECORDING);
@@ -376,6 +380,7 @@ export function useRecordingStart(
       } catch (error) {
         console.error('Failed to start recording from sidebar:', error);
         const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.startsWith('Cloud recording cancelled.')) { setStatus(RecordingStatus.IDLE); return; }
         if (errorMsg.includes('already in progress')) {
           // Benign race — another start won and is live; skip ERROR/alert.
           setStatus(RecordingStatus.RECORDING);

@@ -126,7 +126,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <SelectContent>
                                     <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
                                     <SelectItem value="localQwen">🎙️ Local Qwen / BuzzASR</SelectItem>
-                                    <SelectItem value="aliyun">☁️ Alibaba Cloud (Files only)</SelectItem>
+                                    <SelectItem value="aliyun">☁️ Alibaba Cloud (Live & files)</SelectItem>
                                     <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
                                     {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
@@ -185,7 +185,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
 
 
                     {uiProvider === 'aliyun' && <>
-                        <p className="text-sm text-gray-600">Live recording uses {transcriptModelConfig.model}. Choose your cloud file settings below.</p>
+                        <p className="text-sm text-gray-600">Selected local model: {transcriptModelConfig.model}. Cloud live recording and file imports are configured independently below.</p>
                         <AliyunSettings />
                     </>}
 

@@ -1,3 +1,4 @@
+import { OpenCaptionsButton } from './OpenCaptionsButton';
 import React, { useState, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { FolderOpen } from 'lucide-react';
@@ -170,6 +171,10 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
         </p>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
+        <div><div className="font-medium">Floating captions</div><p className="text-sm text-gray-600">Keep live text above other apps. Works with local and cloud transcription.</p></div>
+        <OpenCaptionsButton/>
+      </div>
       {/* Auto Save Toggle */}
       <div className="flex items-center justify-between p-4 border rounded-lg">
         <div className="flex-1">

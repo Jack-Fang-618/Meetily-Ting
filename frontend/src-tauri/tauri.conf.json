@@ -75,6 +75,20 @@
                             ]
                         }
                     ]
+                },
+                {
+                    "identifier": "captions",
+                    "description": "Read live caption events and control only the caption window",
+                    "windows": [
+                        "ting-captions"
+                    ],
+                    "permissions": [
+                        "core:event:allow-listen",
+                        "core:event:allow-unlisten",
+                        "core:window:allow-close",
+                        "core:window:allow-start-dragging",
+                        "core:window:allow-set-always-on-top"
+                    ]
                 }
             ],
             "devCsp": {

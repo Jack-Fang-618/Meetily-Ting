@@ -1,5 +1,6 @@
 'use client';
 
+import { OpenCaptionsButton } from '@/components/OpenCaptionsButton';
 import { useState, useEffect } from 'react';
 import { RecordingControls } from '@/components/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -225,7 +226,7 @@ export default function Home() {
                 }}
               >
                 <div className="w-2/3 max-w-[750px] flex justify-center">
-                  <div className="bg-white rounded-full shadow-lg flex items-center">
+                  <div className="flex flex-wrap items-center justify-center gap-2"><OpenCaptionsButton/><div className="bg-white rounded-full shadow-lg flex items-center">
                     <RecordingControls
                       isRecording={recordingState.isRecording}
                       onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
@@ -241,7 +242,7 @@ export default function Home() {
                       selectedDevices={selectedDevices}
                       meetingName={meetingTitle}
                     />
-                  </div>
+                  </div></div>
                 </div>
               </div>
             </div>

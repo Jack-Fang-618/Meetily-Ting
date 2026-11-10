@@ -5,6 +5,8 @@
  * Pure 1-to-1 wrapper - no error handling changes, exact same behavior as direct invoke/listen calls.
  */
 
+import { confirmCloudRecording } from '@/components/CloudRecordingConsent';
+import type { AliyunStatus } from '@/lib/aliyun';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
@@ -48,6 +50,15 @@ function withStartTimeout<T>(promise: Promise<T>): Promise<T> {
  * Singleton service for managing recording lifecycle operations
  */
 export class RecordingService {
+  private async cloudConsent(): Promise<boolean> {
+    const status = await invoke<AliyunStatus>('aliyun_live_status');
+    if (!status.config.live_enabled) return false;
+    if (!status.has_key) throw new Error('Save your Bailian API Key before cloud recording.');
+    const agreed = await confirmCloudRecording(status);
+    if (!agreed) throw new Error('Cloud recording cancelled. No audio was sent.');
+    return true;
+  }
+
   /**
    * Check if recording is currently active
    * @returns Promise<boolean>
@@ -77,7 +88,8 @@ export class RecordingService {
    * @returns Promise<void>
    */
   async startRecording(): Promise<void> {
-    return withStartTimeout(invoke('start_recording'));
+    const cloudConsent = await this.cloudConsent();
+    return withStartTimeout(invoke('start_recording', {cloudConsent}));
   }
 
   /**
@@ -92,7 +104,9 @@ export class RecordingService {
     systemDeviceName: string | null,
     meetingName: string
   ): Promise<void> {
+    const cloudConsent = await this.cloudConsent();
     return withStartTimeout(invoke('start_recording_with_devices_and_meeting', {
+      cloudConsent,
       micDeviceName,
       systemDeviceName,
       meetingName

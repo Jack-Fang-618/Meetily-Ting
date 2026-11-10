@@ -707,6 +707,7 @@ pub struct AudioPipeline {
     mixer: ProfessionalAudioMixer,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
+    cloud_streaming: bool,
 }
 
 impl AudioPipeline {
@@ -784,6 +785,7 @@ impl AudioPipeline {
             // Initialize professional audio mixing
             ring_buffer,
             mixer,
+            cloud_streaming: false,
             recording_sender_for_mixed: None,  // Will be set by manager
         })
     }
@@ -857,7 +859,17 @@ impl AudioPipeline {
                             let mixed_with_gain = mixed_clean;
 
                             // STEP 3: Send mixed audio for transcription (VAD + Whisper)
-                            match self.vad_processor.process_audio(&mixed_with_gain) {
+                            if self.cloud_streaming {
+                                // Send continuous mixed PCM, including silence, before local VAD.
+                                for samples in mixed_with_gain.chunks(self.sample_rate as usize / 10) {
+                                    let _ = self.transcription_sender.send(AudioChunk {
+                                        data: samples.to_vec(), sample_rate: self.sample_rate,
+                                        timestamp: chunk.timestamp, chunk_id: self.chunk_id_counter,
+                                        device_type: DeviceType::Microphone,
+                                    });
+                                    self.chunk_id_counter += 1;
+                                }
+                            } else { match self.vad_processor.process_audio(&mixed_with_gain) {
                                 Ok(speech_segments) => {
                                     for segment in speech_segments {
                                         let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
@@ -888,6 +900,8 @@ impl AudioPipeline {
                                 Err(e) => {
                                     warn!("⚠️ VAD error: {}", e);
                                 }
+                            }
+
                             }
 
                             // STEP 4: Send mixed audio for recording (WAV file)
@@ -923,6 +937,23 @@ impl AudioPipeline {
     }
 
     fn flush_remaining_audio(&mut self) -> Result<()> {
+        if self.cloud_streaming {
+            let remaining = self.ring_buffer.mic_buffer.len().max(self.ring_buffer.system_buffer.len());
+            if remaining > 0 {
+                let old_window = self.ring_buffer.window_size_samples;
+                self.ring_buffer.window_size_samples = remaining;
+                if let Some((mic, sys)) = self.ring_buffer.extract_window() {
+                    let data = self.mixer.mix_window(&mic, &sys);
+                    let chunk = AudioChunk { data, sample_rate:self.sample_rate, timestamp:self.chunk_id_counter as f64 / 10.0,
+                        chunk_id:self.chunk_id_counter, device_type:DeviceType::Microphone };
+                    let _ = self.transcription_sender.send(chunk.clone());
+                    if let Some(sender) = &self.recording_sender_for_mixed { let _ = sender.send(chunk); }
+                    self.chunk_id_counter += 1;
+                }
+                self.ring_buffer.window_size_samples = old_window;
+            }
+            return Ok(());
+        }
         info!("Flushing remaining audio from pipeline (processed {} chunks)", self.processed_chunks);
 
         // Flush any remaining audio from VAD processor and send segments to transcription
@@ -991,6 +1022,7 @@ impl AudioPipelineManager {
         mic_device_kind: super::device_detection::InputDeviceKind,
         system_device_name: String,
         system_device_kind: super::device_detection::InputDeviceKind,
+        cloud_streaming: bool,
     ) -> Result<()> {
         // Log device information for adaptive buffering
         info!("🎙️ Starting pipeline with device info:");
@@ -1018,6 +1050,7 @@ impl AudioPipelineManager {
         // CRITICAL FIX: Connect recording sender to receive pre-mixed audio
         // This ensures both mic AND system audio are captured in recordings
         pipeline.recording_sender_for_mixed = recording_sender;
+        pipeline.cloud_streaming = cloud_streaming;
 
         let handle = tokio::spawn(async move {
             pipeline.run().await

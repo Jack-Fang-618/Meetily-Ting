@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { AliyunConfig, AliyunStatus, ALIYUN_MODELS } from '../lib/aliyun';
+import { AliyunConfig, AliyunStatus, ALIYUN_MODELS, ALIYUN_LIVE_MODELS } from '../lib/aliyun';
 
 type Action = 'save' | 'test' | 'remove' | 'reload';
 
@@ -58,9 +58,9 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h3 className="text-lg font-semibold">Alibaba Cloud</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Transcribe audio files with your own Bailian account.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Transcribe recordings and audio files with your own Bailian account.</p>
       </div>
-      <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">Files only</span>
+      <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">Cloud ASR</span>
     </div>
     {loading ? <p role="status" className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />Loading cloud settings…</p>
       : !config ? <Button disabled={busy} variant="outline" onClick={() => action('reload', refresh)}>Reload cloud settings</Button>
@@ -76,10 +76,24 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
           <div className="flex items-center justify-between gap-4 p-4">
             <div className="space-y-1">
               <Label htmlFor="aliyun-default">Default for file imports</Label>
-              <p id="aliyun-default-hint" className="text-sm text-muted-foreground">Each upload still needs your confirmation. Live recording stays local.</p>
+              <p id="aliyun-default-hint" className="text-sm text-muted-foreground">Each upload still needs your confirmation. The live recording choice below is independent.</p>
             </div>
             <Switch id="aliyun-default" disabled={busy || !config.enabled} aria-describedby="aliyun-default-hint" checked={config.default_for_files} onCheckedChange={default_for_files => update({ default_for_files })} />
           </div>
+        </div>
+        <div className="space-y-4 rounded-lg border bg-card p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1"><Label htmlFor="aliyun-live">Use cloud for live recording</Label><p className="text-sm text-muted-foreground">Off: use your selected local model. On: stream audio after confirming each recording.</p></div>
+            <Switch id="aliyun-live" disabled={busy} checked={!!config.live_enabled} onCheckedChange={live_enabled => update({live_enabled})} />
+          </div>
+          {config.live_enabled && <div className="space-y-2">
+            <Label htmlFor="aliyun-live-model">Live transcription model</Label>
+            <Select disabled={busy} value={config.live_model || ALIYUN_LIVE_MODELS[0]} onValueChange={live_model => update({live_model})}>
+              <SelectTrigger id="aliyun-live-model"><SelectValue /></SelectTrigger>
+              <SelectContent>{ALIYUN_LIVE_MODELS.map((m, i) => <SelectItem key={m} value={m}>{i === 0 ? 'Qwen ASR 3.1 Streaming' : 'Qwen ASR 3.0 Streaming'}</SelectItem>)}</SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Automatic language detection. Local audio is always saved for recovery. Connection testing below checks file upload access; live model access is checked when recording starts.</p>
+          </div>}
         </div>
         <div className="space-y-5 rounded-lg border bg-card p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -109,9 +123,9 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
               <Label htmlFor="aliyun-dialect">Preserve dialect wording</Label>
-              <p id="aliyun-dialect-hint" className="text-sm text-muted-foreground">{config.model.includes('3.1') ? 'Keep Cantonese phrasing instead of standardizing it.' : 'Available with Qwen ASR 3.1.'}</p>
+              <p id="aliyun-dialect-hint" className="text-sm text-muted-foreground">{'Applies to Qwen ASR 3.1 file and live models. Keep Cantonese phrasing instead of standardizing it.'}</p>
             </div>
-            <Switch id="aliyun-dialect" disabled={busy || !config.model.includes('3.1')} aria-describedby="aliyun-dialect-hint" checked={config.model.includes('3.1') && config.keep_dialect} onCheckedChange={keep_dialect => update({ keep_dialect })} />
+            <Switch id="aliyun-dialect" disabled={busy || (!config.model.includes('3.1') && !(config.live_enabled && (config.live_model || ALIYUN_LIVE_MODELS[0]).includes('3.1')))} aria-describedby="aliyun-dialect-hint" checked={config.keep_dialect && (config.model.includes('3.1') || !!(config.live_enabled && (config.live_model || ALIYUN_LIVE_MODELS[0]).includes('3.1')))} onCheckedChange={keep_dialect => update({ keep_dialect })} />
           </div>
           <details className="text-sm">
             <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Advanced settings</summary>
@@ -122,19 +136,19 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
           </details>
         </div>
         <div className="space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-          <p className="font-medium">Cloud uploads · Development preview</p>
+          <p className="font-medium">File uploads · Development preview</p>
           <p>Selected audio is sent to Alibaba Cloud. Temporary uploads expire within 48 hours; charges apply to your account. Only the first audio track is transcribed.</p>
           <p className="text-xs">This temporary upload method must be replaced before production release.</p>
         </div>
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button data-action="save" disabled={busy || !dirty} onClick={() => action('save', async () => { await save(); setMessage('Settings saved. Your live recording model is unchanged.'); })}>
+            <Button data-action="save" disabled={busy || !dirty} onClick={() => action('save', async () => { await save(); setMessage('Settings saved. Your recording and file preferences have been saved.'); })}>
               {pending === 'save' && <Loader2 className="animate-spin motion-reduce:animate-none" />}{pending === 'save' ? 'Saving…' : 'Save settings'}
             </Button>
             <Button data-action="test" variant="outline" disabled={busy || (!hasSavedKey && !key.trim())} onClick={() => action('test', async () => { if (dirty) await save(); setMessage(await call<string>('aliyun_test_connection')); })}>
               {pending === 'test' && <Loader2 className="animate-spin motion-reduce:animate-none" />}{pending === 'test' ? 'Testing…' : dirty ? 'Save & test connection' : 'Test connection'}
             </Button>
-            <Button data-action="remove" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={busy || dirty || !hasSavedKey} onClick={() => action('remove', async () => { await call('aliyun_delete_key'); setKey(''); await refresh(); setMessage('API Key removed. Cloud transcription is disabled.'); })}>
+            <Button data-action="remove" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={busy || dirty || !hasSavedKey} onClick={() => action('remove', async () => { await call('aliyun_delete_key'); setKey(''); await refresh(); setMessage('API Key removed. Cloud file and live transcription are disabled.'); })}>
               {pending === 'remove' ? 'Removing…' : 'Remove key'}
             </Button>
           </div>

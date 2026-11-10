@@ -19,6 +19,8 @@ pub const MODELS: [&str; 2] = [
 #[serde(default)]
 pub struct CloudConfig {
     pub enabled: bool,
+    pub live_enabled: bool,
+    pub live_model: String,
     pub default_for_files: bool,
     pub region: String,
     pub workspace: String,
@@ -29,6 +31,8 @@ impl Default for CloudConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            live_enabled: false,
+            live_model: super::aliyun_streaming::MODELS[0].into(),
             default_for_files: false,
             region: "beijing".into(),
             workspace: String::new(),
@@ -42,6 +46,7 @@ impl CloudConfig {
         if !["beijing", "singapore"].contains(&self.region.as_str()) {
             bail!("Unsupported region");
         }
+        if !super::aliyun_streaming::MODELS.contains(&self.live_model.as_str()) { bail!("Unsupported streaming model"); }
         if !MODELS.contains(&self.model.as_str()) {
             bail!("Unsupported Filetrans model");
         }
@@ -87,7 +92,7 @@ pub struct CloudStatus {
     pub config: CloudConfig,
     pub has_key: bool,
 }
-fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf> {
+pub(super) fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf> {
     Ok(app.path().app_data_dir()?.join("aliyun"))
 }
 fn entry<R: Runtime>(app: &AppHandle<R>, region: &str) -> Result<keyring::Entry> {
@@ -96,14 +101,14 @@ fn entry<R: Runtime>(app: &AppHandle<R>, region: &str) -> Result<keyring::Entry>
         region,
     )?)
 }
-fn credential<R: Runtime>(app: &AppHandle<R>, region: &str) -> Result<Option<String>> {
+pub(super) fn credential<R: Runtime>(app: &AppHandle<R>, region: &str) -> Result<Option<String>> {
     match entry(app, region)?.get_password() {
         Ok(key) => Ok(Some(key)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(_) => bail!("Cannot access the system credential store. Unlock it and retry."),
     }
 }
-fn read_config(path: &Path) -> Result<CloudConfig> {
+pub(super) fn read_config(path: &Path) -> Result<CloudConfig> {
     let file = path.join("config.json");
     let c = if file.exists() {
         serde_json::from_slice(&std::fs::read(file)?)?
@@ -139,12 +144,20 @@ pub async fn aliyun_status<R: Runtime>(app: AppHandle<R>) -> Result<CloudStatus,
         .is_some();
     Ok(CloudStatus { config: c, has_key })
 }
+/// Local recording readiness must not depend on unlocking an unused cloud key.
+#[tauri::command]
+pub async fn aliyun_live_status<R: Runtime>(app: AppHandle<R>) -> Result<CloudStatus, String> {
+    let config = read_config(&root(&app).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+    let has_key = if config.live_enabled { credential(&app, &config.region).map_err(|e|e.to_string())?.is_some() } else { false };
+    Ok(CloudStatus {config,has_key})
+}
 #[tauri::command]
 pub async fn aliyun_save_config<R: Runtime>(
     app: AppHandle<R>,
     config: CloudConfig,
     api_key: Option<String>,
 ) -> Result<(), String> {
+    if crate::audio::recording_commands::is_recording().await { return Err("Stop recording before changing cloud settings".into()); }
     config.validate().map_err(|e| e.to_string())?;
     if let Some(key) = api_key.filter(|s| !s.trim().is_empty()) {
         if key.trim().len() < 10 || key.trim().contains(char::is_whitespace) {
@@ -155,7 +168,7 @@ pub async fn aliyun_save_config<R: Runtime>(
             .set_password(key.trim())
             .map_err(|_| "Could not save API Key in the system credential store")?;
     }
-    if config.enabled
+    if (config.enabled || config.live_enabled)
         && credential(&app, &config.region)
             .map_err(|e| e.to_string())?
             .is_none()
@@ -170,6 +183,7 @@ pub async fn aliyun_save_config<R: Runtime>(
 }
 #[tauri::command]
 pub async fn aliyun_delete_key<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    if crate::audio::recording_commands::is_recording().await { return Err("Stop recording before removing the cloud key".into()); }
     let path = root(&app).map_err(|e| e.to_string())?;
     let mut c = read_config(&path).map_err(|e| e.to_string())?;
     match entry(&app, &c.region)
@@ -180,6 +194,7 @@ pub async fn aliyun_delete_key<R: Runtime>(app: AppHandle<R>) -> Result<(), Stri
         Err(_) => return Err("Could not remove API Key".into()),
     }
     c.enabled = false;
+    c.live_enabled = false;
     write_json(&path.join("config.json"), &c).map_err(|e| e.to_string())
 }
 #[tauri::command]

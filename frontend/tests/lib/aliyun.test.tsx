@@ -80,4 +80,21 @@ describe('user-owned cloud configuration', () => {
     expect(button.props.disabled).toBe(false);
     act(() => r.unmount());
   });
+  test('live and file defaults are independent and 3.1 live keeps dialect available', async () => {
+    let received: any;
+    const initial = {...status, config:{...status.config, live_enabled:false, live_model:'qwen-audio-3.1-asr-flash-streaming', model:'qwen-audio-3.0-asr-flash-filetrans'}};
+    const call:any = async (command:string,args:any) => { if(command==='aliyun_save_config') received=args.config; return {...initial,config:received||initial.config}; };
+    let r:any;
+    await act(async()=>{r=create(<AliyunSettings call={call}/>);});
+    const {Switch}=await import('../../src/components/ui/switch');
+    await act(async()=>{r.root.findAllByType(Switch).find((s:any)=>s.props.id==='aliyun-live').props.onCheckedChange(true);});
+    const dialect=r.root.findAllByType(Switch).find((s:any)=>s.props.id==='aliyun-dialect');
+    expect(dialect.props.disabled).toBe(false);
+    await act(async()=>{await r.root.findAllByType('button').find((b:any)=>b.props['data-action']==='save').props.onClick();});
+    expect(received.live_enabled).toBe(true);
+    expect(received.enabled).toBe(false);
+    expect(received.default_for_files).toBe(false);
+    act(()=>r.unmount());
+  });
+
 });

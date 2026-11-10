@@ -31,3 +31,5 @@ pub mod input_policy;
 pub mod model_management;
 
 pub mod aliyun;
+
+pub mod aliyun_streaming;
