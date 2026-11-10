@@ -3,10 +3,10 @@
 ## Configure your account
 
 1. Open Settings → Transcription → Transcript Model → **Alibaba Cloud (Files only)**.
-2. Choose the region where your Bailian API Key was created: Beijing or Singapore. Enter your own key. Workspace ID is optional for the regional endpoint, or required to use your workspace-specific endpoint.
+2. Choose the region where your Bailian API Key was created: Beijing or Singapore. Enter your own key. Workspace ID is under **Advanced settings**; it is optional for the regional endpoint, or required to use your workspace-specific endpoint.
 3. Choose 3.1 (recommended starting point) or 3.0. **Preserve dialect wording** applies only to 3.1; keep it enabled for Cantonese verbatim transcription.
-4. Enable cloud models and select **Save cloud settings**, then **Test saved connection**. This checks authentication/upload access without uploading audio or running transcription; it is not proof of model inference availability.
-5. Optionally select **Use this cloud model by default for file imports** and save. This preference is independent of the live/local model; switching local recording models does not clear it. Uncheck it to restore local file defaults. Upload consent is still required for every file.
+4. Enable cloud transcription and select **Save & test connection** (or **Save settings**, then **Test connection**). This checks authentication/upload access without uploading audio or running transcription; it is not proof of model inference availability.
+5. Optionally select **Default for file imports** and save. This preference is independent of the live/local model; switching local recording models does not clear it. Uncheck it to restore local file defaults. Upload consent is still required for every file.
 6. Open Import Audio, select a cloud model and language (Auto for mixed language), and acknowledge upload/account billing for the selected file. Cloud is never chosen as an automatic fallback.
 
 Every installation starts with cloud disabled and no credentials. There is no author-owned default key, bundled key, `.env` fallback, or automatic migration from an older Ting installation. Keys are stored in the OS credential store; the UI only receives a `has_key` boolean. Removing a key disables cloud import for that saved region. Live recording and existing retranscription remain local in this phase.
@@ -58,3 +58,5 @@ Rust suite: 260 passed; separately enabled macOS credential-store set/read/delet
 Recovery check: the native evaluation client reimported a previously completed public sample, returned the saved result, and emitted no upload/submission stage. This complements the unit test that refuses to resubmit an unknown submission.
 
 Local setup note (2026-11-10): at the owner's explicit request, the pre-existing key was copied into this machine's OS credential store and Beijing cloud import enabled. No key was added to source, frontend defaults, configuration JSON, Git history or shared distributions. Other installations still start with cloud disabled and no credentials.
+
+UI follow-up (2026-11-10): shared Select/Switch controls, explicit loading and saving states, save-and-test ordering, duplicate request protection, and region-aware saved-key status. Frontend 59 tests and production build passed. Browser checks used the real components with mock configuration, covering model selection, save/test feedback and shared dialog interaction; this does not substitute for native Keychain or real cloud import validation.

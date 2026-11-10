@@ -185,7 +185,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
 
 
                     {uiProvider === 'aliyun' && <>
-                        <p className="text-sm text-gray-600">Live recording: {transcriptModelConfig.model}. Cloud file imports have a separate preference below. Selecting a local recording model does not overwrite that file preference.</p>
+                        <p className="text-sm text-gray-600">Live recording uses {transcriptModelConfig.model}. Choose your cloud file settings below.</p>
                         <AliyunSettings />
                     </>}
 
