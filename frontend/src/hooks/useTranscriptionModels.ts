@@ -1,4 +1,4 @@
-import { cloudImportOptions, AliyunStatus } from '../lib/aliyun';
+import { cloudImportOptions, preferredCloudFileKey, AliyunStatus } from '../lib/aliyun';
 import { localModelLabel } from '../lib/local-model-labels';
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -88,10 +88,12 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
         provider: 'localQwen' as const, name: m.id, displayName: localModelLabel(m.id, m.label), size_mb: m.size_mb,
       })));
     } catch (err) { console.error('Failed to fetch local Qwen models:', err); }
+    let cloudDefault: string | null = null;
     if (includeCloud) {
       try {
         const cloud = await invoke<AliyunStatus>('aliyun_status');
         allModels.push(...cloudImportOptions(cloud));
+        cloudDefault = preferredCloudFileKey(cloud);
       } catch (err) { console.error('Could not load cloud model configuration:', err); }
     }
     setAvailableModels(allModels);
@@ -112,7 +114,9 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
 
     // Only set default model if user hasn't manually selected one
     if (!userSelectedRef.current) {
-      if (configuredMatch) {
+      if (cloudDefault !== null) {
+        setSelectedModelKey(cloudDefault);
+      } else if (configuredMatch) {
         // Use the configured model if available
         setSelectedModelKey(`${configuredMatch.provider}:${configuredMatch.name}`);
       } else if (!configuredModel && firstLocal) {

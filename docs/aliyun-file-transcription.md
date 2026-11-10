@@ -2,11 +2,12 @@
 
 ## Configure your account
 
-1. Open Settings → Transcription → **Alibaba Cloud · File transcription**.
+1. Open Settings → Transcription → Transcript Model → **Alibaba Cloud (Files only)**.
 2. Choose the region where your Bailian API Key was created: Beijing or Singapore. Enter your own key. Workspace ID is optional for the regional endpoint, or required to use your workspace-specific endpoint.
 3. Choose 3.1 (recommended starting point) or 3.0. **Preserve dialect wording** applies only to 3.1; keep it enabled for Cantonese verbatim transcription.
 4. Enable cloud models and select **Save cloud settings**, then **Test saved connection**. This checks authentication/upload access without uploading audio or running transcription; it is not proof of model inference availability.
-5. Open Import Audio, select a cloud model and language (Auto for mixed language), and acknowledge upload/account billing for the selected file. Cloud is never chosen as an automatic fallback.
+5. Optionally select **Use this cloud model by default for file imports** and save. This preference is independent of the live/local model; switching local recording models does not clear it. Uncheck it to restore local file defaults. Upload consent is still required for every file.
+6. Open Import Audio, select a cloud model and language (Auto for mixed language), and acknowledge upload/account billing for the selected file. Cloud is never chosen as an automatic fallback.
 
 Every installation starts with cloud disabled and no credentials. There is no author-owned default key, bundled key, `.env` fallback, or automatic migration from an older Ting installation. Keys are stored in the OS credential store; the UI only receives a `has_key` boolean. Removing a key disables cloud import for that saved region. Live recording and existing retranscription remain local in this phase.
 
@@ -55,3 +56,5 @@ References: [Private signed downloads](https://help.aliyun.com/zh/oss/user-guide
 Rust suite: 260 passed; separately enabled macOS credential-store set/read/delete smoke test passed with a disposable dummy credential. Frontend: 56 passed, TypeScript and production build passed. Public audio: 3.1 full 30-file run and 3.0 four-file smoke run succeeded. Native GUI interaction has not been revalidated after this change; restart from the desktop launcher to load the new code, then check save/test/remove key and an explicit cloud import. The author's real key was used only for the opt-in evaluation process and was not saved as the application's default.
 
 Recovery check: the native evaluation client reimported a previously completed public sample, returned the saved result, and emitted no upload/submission stage. This complements the unit test that refuses to resubmit an unknown submission.
+
+Local setup note (2026-11-10): at the owner's explicit request, the pre-existing key was copied into this machine's OS credential store and Beijing cloud import enabled. No key was added to source, frontend defaults, configuration JSON, Git history or shared distributions. Other installations still start with cloud disabled and no credentials.

@@ -25,7 +25,9 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
       <p className="text-sm text-gray-600">Optional. Use your own Bailian API Key and account. Live recording continues to use your local model.</p></div>
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {!config ? <Button disabled={busy} variant="outline" onClick={() => action(refresh)}>Reload cloud settings</Button> : <fieldset disabled={busy} className="space-y-4">
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.enabled} onChange={e => setConfig({...config, enabled:e.target.checked})} />Enable cloud models in Import Audio</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.enabled} onChange={e => setConfig({...config, enabled:e.target.checked, default_for_files:e.target.checked && config.default_for_files})} />Enable cloud models in Import Audio</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={!config.enabled} checked={config.default_for_files} onChange={e => setConfig({...config, default_for_files:e.target.checked})} />Use this cloud model by default for file imports</label>
+      <p className="text-xs text-gray-500">This does not change your live recording model. Each import still requires upload consent. Uncheck to use your local model by default.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div><Label htmlFor="aliyun-region">Account region</Label><select id="aliyun-region" className="w-full rounded-md border bg-transparent p-2" value={config.region} onChange={e => { setConfig({...config, region:e.target.value}); setKey(''); setMessage(''); }}>
           <option value="beijing">China (Beijing)</option><option value="singapore">Singapore</option>
@@ -40,7 +42,7 @@ export function AliyunSettings({ call = invoke }: { call?: typeof invoke } = {})
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.keep_dialect} onChange={e => setConfig({...config,keep_dialect:e.target.checked})} />Preserve dialect wording (3.1 only; recommended for Cantonese)</label>
       <p className="text-sm text-gray-600">Development preview: selected audio is uploaded to Alibaba Cloud temporary storage and expires within 48 hours. Charges apply to your account. This upload method is not intended for production deployment. The first audio track is transcribed.</p>
       <div className="flex flex-wrap gap-2">
-        <Button disabled={busy} onClick={() => action(async () => { await call('aliyun_save_config',{config,apiKey:key || null}); setKey(''); await refresh(); setMessage('Cloud settings saved. Select a cloud model explicitly when importing audio.'); })}>Save cloud settings</Button>
+        <Button disabled={busy} onClick={() => action(async () => { await call('aliyun_save_config',{config,apiKey:key || null}); setKey(''); await refresh(); setMessage(config.default_for_files && config.enabled ? 'Saved. File imports default to this cloud model; live recording is unchanged.' : 'Saved. File imports default to your local model; cloud remains an explicit choice when enabled.'); })}>Save cloud settings</Button>
         <Button variant="outline" disabled={busy || dirty || !saved?.has_key} onClick={() => action(async () => { setMessage(await call<string>('aliyun_test_connection')); })}>Test saved connection</Button>
         <Button variant="outline" disabled={busy || dirty || !saved?.has_key} onClick={() => action(async () => { await call('aliyun_delete_key'); setKey(''); await refresh(); setMessage('API Key removed; cloud import disabled.'); })}>Remove saved key</Button>
       </div>

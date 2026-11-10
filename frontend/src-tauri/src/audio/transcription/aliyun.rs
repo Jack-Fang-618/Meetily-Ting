@@ -19,6 +19,7 @@ pub const MODELS: [&str; 2] = [
 #[serde(default)]
 pub struct CloudConfig {
     pub enabled: bool,
+    pub default_for_files: bool,
     pub region: String,
     pub workspace: String,
     pub model: String,
@@ -28,6 +29,7 @@ impl Default for CloudConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            default_for_files: false,
             region: "beijing".into(),
             workspace: String::new(),
             model: MODELS[0].into(),
@@ -647,6 +649,9 @@ mod tests {
     fn defaults_never_enable_cloud_and_regions_are_allowlisted() {
         let mut c = CloudConfig::default();
         assert!(!c.enabled);
+        assert!(!c.default_for_files);
+        let old: CloudConfig = serde_json::from_value(json!({"enabled":true})).unwrap();
+        assert!(!old.default_for_files);
         assert!(c.keep_dialect);
         c.workspace = "evil.com/path".into();
         assert!(c.validate().is_err());

@@ -28,7 +28,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [showApiKey, setShowApiKey] = useState<boolean>(false);
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
-    const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
+    const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider'] | 'aliyun'>(transcriptModelConfig.provider);
 
     // Sync uiProvider when backend config changes (e.g., after model selection or initial load)
     useEffect(() => {
@@ -113,9 +113,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                             <Select
                                 value={uiProvider}
                                 onValueChange={(value) => {
-                                    const provider = value as TranscriptModelProps['provider'];
+                                    const provider = value as TranscriptModelProps['provider'] | 'aliyun';
                                     setUiProvider(provider);
-                                    if (provider !== 'localQwen' && provider !== 'localWhisper' && provider !== 'parakeet') {
+                                    if (provider !== 'aliyun' && provider !== 'localQwen' && provider !== 'localWhisper' && provider !== 'parakeet') {
                                         fetchApiKey(provider);
                                     }
                                 }}
@@ -126,6 +126,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <SelectContent>
                                     <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
                                     <SelectItem value="localQwen">🎙️ Local Qwen / BuzzASR</SelectItem>
+                                    <SelectItem value="aliyun">☁️ Alibaba Cloud (Files only)</SelectItem>
                                     <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
                                     {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
@@ -134,7 +135,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 </SelectContent>
                             </Select>
 
-                            {uiProvider !== 'localQwen' && uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && (
+                            {uiProvider !== 'aliyun' && uiProvider !== 'localQwen' && uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && (
                                 <Select
                                     value={transcriptModelConfig.model}
                                     onValueChange={(value) => {
@@ -183,7 +184,10 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                     )}
 
 
-                    <AliyunSettings />
+                    {uiProvider === 'aliyun' && <>
+                        <p className="text-sm text-gray-600">Live recording: {transcriptModelConfig.model}. Cloud file imports have a separate preference below. Selecting a local recording model does not overwrite that file preference.</p>
+                        <AliyunSettings />
+                    </>}
 
                     {requiresApiKey && (
                         <div>
