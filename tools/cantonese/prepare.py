@@ -18,11 +18,14 @@ import truststore
 truststore.inject_into_ssl()
 from huggingface_hub import snapshot_download
 
+from preparation_progress import PreparationProgress
+PROGRESS = PreparationProgress()
+
 HERE = Path(__file__).resolve().parent
 CATALOG = json.loads((HERE / 'catalog.json').read_text())
 
 def step(text):
-    print(text, flush=True)
+    PROGRESS.step(text)
 
 def run_checked(command, stage, root, **kwargs):
     log = root / 'logs' / (stage + '.log')
@@ -49,9 +52,15 @@ def preflight(model_id, root):
         raise RuntimeError(f'At least {required_gb} GiB free space is required for preparation.')
 
 def snapshot(repo, revision):
-    step('Downloading ' + repo)
-    return snapshot_download(repo_id=repo, revision=revision,
+    step('Checking download sizes · ' + repo)
+    options = dict(repo_id=repo, revision=revision,
         allow_patterns=['*.json', '*.txt', '*.safetensors', '*.model'], max_workers=3)
+    files = snapshot_download(**options, dry_run=True)
+    PROGRESS.download(repo, files)
+    result = snapshot_download(**options, tqdm_class=PROGRESS.tqdm_class())
+    PROGRESS.publish()
+    step('Download complete · ' + repo)
+    return result
 
 def fetch_checked(url, digest, path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,11 +143,15 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     args.root.mkdir(parents=True, exist_ok=True)
+    PROGRESS.start()
     try:
         prepare(args.model, args.root)
     except Exception as exc:
         log = args.root / 'logs' / (args.model + '-prepare.log')
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(traceback.format_exc())
-        print(f'Preparation failed: {exc}\nDiagnostic log: {log}', flush=True)
+        step(f'Preparation failed: {exc}\nDiagnostic log: {log}')
         raise SystemExit(1)
+
+    finally:
+        PROGRESS.close()

@@ -5,18 +5,20 @@ import { listen } from '@tauri-apps/api/event';
 import { toast } from 'sonner';
 import { TranscriptionModelCard } from './TranscriptionModelCard';
 import { useLocalModelSelection } from '../hooks/useLocalModelSelection';
+import { localModelLabel } from '../lib/local-model-labels';
 import type { ModelStatus } from '../lib/parakeet';
 
 interface LocalModel { id: string; label: string; size_mb: number; installed: boolean }
 interface LocalStatus {
   runtime_ready: boolean; preparing: boolean; preparing_model?: string;
-  preparation_message?: string; models: LocalModel[];
+  preparation_message?: string; preparation_progress?: number; models: LocalModel[];
 }
 interface Props {
   selectedModel?: string;
   onSelect: (provider: 'localQwen' | 'localWhisper', model: string) => void;
 }
 export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
+  const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState<LocalStatus | null>(null);
   const [buzzInstalled, setBuzzInstalled] = useState(false);
   const [preparing, setPreparing] = useState<string | null>(null);
@@ -32,6 +34,8 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
   const refresh = useCallback(async () => {
     const result = await invoke<LocalStatus>('cantonese_status');
     setStatus(result);
+    setMessage(result.preparation_message || '');
+    setProgress(result.preparation_progress ?? null);
     if (!result.preparing) setCancelling(false);
     await invoke('whisper_init');
     const whisper = await invoke<{ name: string; status: unknown }[]>('whisper_get_available_models');
@@ -41,8 +45,8 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     refresh().catch(e => { if (!disposed) setError(String(e)); });
-    listen<{ model: string; message: string }>('cantonese-preparation', event => {
-      if (!disposed) setMessage(event.payload.message);
+    listen<{ model: string; message: string; progress?: number | null }>('cantonese-preparation', event => {
+      if (!disposed) { setMessage(event.payload.message); setProgress(event.payload.progress ?? null); }
     }).then(fn => { if (disposed) fn(); else unlisten = fn; })
       .catch(e => { if (!disposed) setError(String(e)); });
     const interval = setInterval(() => { refresh().catch(e => { if (!disposed) setError(String(e)); }); }, 2000);
@@ -52,7 +56,7 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
   const prepare = async (model: string) => {
     if (pending.current) return;
     pending.current = true; cancelled.current = false;
-    setPreparing(model); setError(''); setMessage('Starting preparation…');
+    setPreparing(model); setError(''); setMessage('Starting preparation…'); setProgress(null);
     setModelErrors(prev => { const next = {...prev}; delete next[model]; return next; });
     try {
       await invoke('cantonese_prepare_model', { model });
@@ -80,24 +84,25 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
     finally { pending.current = false; }
   };
   if (!status) return <div role={error ? 'alert' : 'status'} className="p-4 text-sm">{error || 'Loading models…'}{error && <button onClick={() => { setError(''); refresh().catch(e => setError(String(e))); }} className="ml-2 text-blue-600">Retry</button>}</div>;
-  const models = [...status.models, { id: 'buzz-cantonese', label: 'BuzzASR · Cantonese Whisper', size_mb: 2951, installed: buzzInstalled }];
+  const models = [...status.models, { id: 'buzz-cantonese', label: 'BuzzASR · Cantonese Whisper', size_mb: 2951, installed: buzzInstalled }]
+    .map(model => ({ ...model, label: localModelLabel(model.id, model.label) }));
   const active = preparing || status.preparing_model;
   return <div className="space-y-3">
-    <p className="text-sm text-gray-600">Local audio processing. 原版 Qwen（非微调）推荐用于普通话为主的录音，也支持英语和粤语；可先试 Qwen3-ASR 0.6B。粤语微调版偏向粤语书面记录。</p>
+    <p className="text-sm text-gray-600">Audio stays on your device. Original Qwen is recommended for Mandarin-dominant recordings and also supports English and Cantonese. Start with Qwen3-ASR 0.6B. Cantonese fine-tunes favor written Chinese output.</p>
     <p className="text-xs text-gray-500">Qwen transcribes in segments; live speed depends on your Mac. Preparation may need extra disk space. Experimental models have not completed on-device validation.</p>
     {!status.runtime_ready && <p role="alert" className="text-sm text-amber-700">The local runtime is unavailable. This development build requires Apple Silicon and the Ting runtime setup.</p>}
     {models.map(model => {
-      const modelStatus: ModelStatus = active === model.id ? { Downloading: { progress: 0 } }
+      const modelStatus: ModelStatus = active === model.id ? { Downloading: { progress: progress ?? 0 } }
         : modelErrors[model.id] ? { Error: modelErrors[model.id] } : model.installed ? 'Available' : 'Missing';
       return <TranscriptionModelCard key={model.id}
         model={{ name: model.id, size_mb: model.size_mb, status: modelStatus }} displayName={model.label}
         icon={model.id === 'buzz-cantonese' ? '🏠' : '🎙️'}
-        description={model.id.startsWith('qwen3-yue') ? 'Cantonese fine-tune · Written transcript style' : model.id === 'buzz-cantonese' ? 'Cantonese fine-tune · Whisper engine' : '原版 · 推荐普通话为主的录音 · 同时支持英语、粤语'}
+        description={model.id.startsWith('qwen3-yue') ? 'Cantonese fine-tune · Written Chinese output' : model.id === 'buzz-cantonese' ? 'Cantonese fine-tune · Whisper engine' : 'Original · Recommended for Mandarin-dominant audio · Also supports English and Cantonese'}
         badge={model.id.includes('1.7b') || model.id === 'buzz-cantonese' ? 'Experimental' : undefined}
         isSelected={selectedModel === model.id} isSelecting={selecting === model.id}
         disabled={!!selecting || !!active || !status.runtime_ready || status.preparing}
         isDownloading={active === model.id} isCancelling={active === model.id && cancelling}
-        indeterminate progressMessage={message || status.preparation_message}
+        indeterminate={progress === null} progressMessage={message || status.preparation_message}
         onSelect={() => model.id === 'buzz-cantonese' ? buzz.select(model.id) : qwen.select(model.id)}
         onDownload={() => prepare(model.id)} onCancel={cancel} onDelete={() => remove(model.id)} />;
     })}

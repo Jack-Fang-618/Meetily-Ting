@@ -45,6 +45,7 @@ pub struct LocalStatus {
     pub preparing: bool,
     pub preparing_model: Option<String>,
     pub preparation_message: Option<String>,
+    pub preparation_progress: Option<f64>,
     pub models: Vec<ModelStatus>,
 }
 
@@ -113,9 +114,22 @@ pub async fn cantonese_status<R: Runtime>(app: AppHandle<R>) -> Result<LocalStat
         runtime_ready: supported() && runtime().is_file() && script("worker.py").is_file(),
         preparing: PREPARE_LOCK.try_lock().is_err(),
         preparing_model: preparation.as_ref().map(|p| p.0.clone()),
-        preparation_message: preparation.map(|p| p.1),
+        preparation_message: preparation.as_ref().map(|p| preparation_update(&p.1).0),
+        preparation_progress: preparation.as_ref().and_then(|p| preparation_update(&p.1).1),
         models,
     })
+}
+
+fn preparation_update(line: &str) -> (String, Option<f64>) {
+    if let Ok(value) = serde_json::from_str::<Value>(line) {
+        if value["type"] == "preparation-progress" {
+            if let Some(message) = value["message"].as_str() {
+                let progress = value["progress"].as_f64().filter(|p| p.is_finite() && (0.0..=100.0).contains(p));
+                return (message.to_owned(), progress);
+            }
+        }
+    }
+    (line.to_owned(), None)
 }
 
 #[tauri::command]
@@ -182,14 +196,15 @@ async fn prepare_process<R: Runtime>(app: &AppHandle<R>, model: &str, cancelled:
         };
         let Some(line) = next else { break; };
         *PREPARATION.lock().await = Some((model.to_owned(), line.clone()));
+        let (message, progress) = preparation_update(&line);
         // Only our high-level steps are surfaced; model-library logs stay on stderr.
-        recent.push_back(line.clone());
+        recent.push_back(message.clone());
         if recent.len() > 14 {
             recent.pop_front();
         }
         let _ = app.emit(
             "cantonese-preparation",
-            json!({"model":model,"message":line}),
+            json!({"model":model,"message":message,"progress":progress}),
         );
     }
     let status = tokio::select! {
@@ -392,6 +407,13 @@ impl TranscriptionProvider for MlxProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preparation_progress_handles_bytes_stages_and_legacy_output() {
+        assert_eq!(preparation_update(r#"{"type":"preparation-progress","message":"10 / 20 MiB","progress":50}"#), ("10 / 20 MiB".into(), Some(50.0)));
+        assert_eq!(preparation_update(r#"{"type":"preparation-progress","message":"Converting · 8s","progress":null}"#), ("Converting · 8s".into(), None));
+        assert_eq!(preparation_update("Preparation failed: disk full"), ("Preparation failed: disk full".into(), None));
+        assert_eq!(preparation_update(r#"{"type":"preparation-progress","message":"bad","progress":120}"#).1, None);
+    }
     /// Opt-in: uses an existing installation, never downloads weights.
     #[tokio::test]
     #[ignore]

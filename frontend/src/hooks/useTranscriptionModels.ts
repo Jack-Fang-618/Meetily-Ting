@@ -1,3 +1,4 @@
+import { localModelLabel } from '../lib/local-model-labels';
 import { useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -82,7 +83,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     try {
       const local = await invoke<{ runtime_ready: boolean; models: { id: string; label: string; size_mb: number; installed: boolean }[] }>('cantonese_status');
       if (local.runtime_ready) allModels.push(...local.models.filter(m => m.installed).map(m => ({
-        provider: 'localQwen' as const, name: m.id, displayName: m.label, size_mb: m.size_mb,
+        provider: 'localQwen' as const, name: m.id, displayName: localModelLabel(m.id, m.label), size_mb: m.size_mb,
       })));
     } catch (err) { console.error('Failed to fetch local Qwen models:', err); }
     setAvailableModels(allModels);

@@ -21,4 +21,10 @@ describe('shared transcription model card', () => {
     const html = renderToStaticMarkup(<TranscriptionModelCard {...base} model={{name:'test',status:{Error:'Disk full'},size_mb:900}} />);
     expect(html).toContain('role="alert"'); expect(html).toContain('Disk full'); expect(html).toContain('Retry download');
   });
+  test('known byte progress displays a real percentage and transfer details', () => {
+    const html = renderToStaticMarkup(<TranscriptionModelCard {...base} isDownloading progressMessage="50 / 100 MiB · 2 MiB/s" model={{name:'buzz',status:{Downloading:{progress:50}},size_mb:2951}} />);
+    expect(html).toContain('aria-valuenow="50"');
+    expect(html).toContain('Downloading… 50%');
+    expect(html).toContain('50 / 100 MiB · 2 MiB/s');
+  });
 });
