@@ -10,7 +10,7 @@ import type { ModelStatus } from '../lib/parakeet';
 
 interface LocalModel { id: string; label: string; size_mb: number; installed: boolean }
 interface LocalStatus {
-  runtime_ready: boolean; preparing: boolean; preparing_model?: string;
+  runtime_ready: boolean; experimental_models: boolean; preparing: boolean; preparing_model?: string;
   preparation_message?: string; preparation_progress?: number; models: LocalModel[];
 }
 interface Props {
@@ -37,6 +37,7 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
     setMessage(result.preparation_message || '');
     setProgress(result.preparation_progress ?? null);
     if (!result.preparing) setCancelling(false);
+    if (!result.experimental_models) return;
     await invoke('whisper_init');
     const whisper = await invoke<{ name: string; status: unknown }[]>('whisper_get_available_models');
     setBuzzInstalled(whisper.some(m => m.name === 'buzz-cantonese' && m.status === 'Available'));
@@ -84,11 +85,11 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
     finally { pending.current = false; }
   };
   if (!status) return <div role={error ? 'alert' : 'status'} className="p-4 text-sm">{error || 'Loading models…'}{error && <button onClick={() => { setError(''); refresh().catch(e => setError(String(e))); }} className="ml-2 text-blue-600">Retry</button>}</div>;
-  const models = [...status.models, { id: 'buzz-cantonese', label: 'BuzzASR · Cantonese Whisper', size_mb: 2951, installed: buzzInstalled }]
+  const models = [...status.models, ...(status.experimental_models ? [{ id: 'buzz-cantonese', label: 'BuzzASR · Cantonese Whisper', size_mb: 2951, installed: buzzInstalled }] : [])]
     .map(model => ({ ...model, label: localModelLabel(model.id, model.label) }));
   const active = preparing || status.preparing_model;
   return <div className="space-y-3">
-    <p className="text-sm text-gray-600">Audio stays on your device. Original Qwen is recommended for Mandarin-dominant recordings and also supports English and Cantonese. Start with Qwen3-ASR 0.6B. Cantonese fine-tunes favor written Chinese output.</p>
+    <p className="text-sm text-gray-600">Audio stays on your device. Original Qwen is recommended for Mandarin-dominant recordings and also supports English and Cantonese. Start with Qwen3-ASR 0.6B.</p>
     <p className="text-xs text-gray-500">Live speed depends on your device. Model preparation may require extra disk space.</p>
     {!status.runtime_ready && <p role="alert" className="text-sm text-amber-700">The local runtime is unavailable. This development build requires Apple Silicon and the Ting runtime setup.</p>}
     {models.map(model => {

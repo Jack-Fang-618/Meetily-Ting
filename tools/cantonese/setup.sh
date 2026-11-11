@@ -8,5 +8,6 @@ fi
 # Installs runtimes only. No model weights are downloaded automatically.
 [[ -x .ting-runtime/bin/python ]] || UV_NATIVE_TLS=true uv venv --python 3.11 .ting-runtime
 UV_NATIVE_TLS=true uv pip install --python .ting-runtime/bin/python -r tools/cantonese/runtime-requirements.txt
+if [[ "${1:-}" == --inference-only ]]; then exit 0; fi
 [[ -x .ting-convert/bin/python ]] || UV_NATIVE_TLS=true uv venv --python 3.11 .ting-convert
 UV_NATIVE_TLS=true uv pip install --python .ting-convert/bin/python -r tools/cantonese/convert-requirements.txt

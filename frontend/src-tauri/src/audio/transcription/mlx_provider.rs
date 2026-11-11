@@ -42,6 +42,7 @@ pub struct ModelStatus {
 #[derive(Serialize)]
 pub struct LocalStatus {
     pub runtime_ready: bool,
+    pub experimental_models: bool,
     pub preparing: bool,
     pub preparing_model: Option<String>,
     pub preparation_message: Option<String>,
@@ -113,6 +114,7 @@ pub async fn cantonese_status<R: Runtime>(app: AppHandle<R>) -> Result<LocalStat
     let models = serde_json::from_str::<Vec<ModelSpec>>(CATALOG)
         .unwrap()
         .into_iter()
+        .filter(|s| cfg!(debug_assertions) || s.id.starts_with("qwen3-asr-"))
         .map(|s| {
             let ready = installed(&root, &s.id);
             ModelStatus {
@@ -125,6 +127,7 @@ pub async fn cantonese_status<R: Runtime>(app: AppHandle<R>) -> Result<LocalStat
         .collect();
     let preparation = PREPARATION.lock().await.clone();
     Ok(LocalStatus {
+        experimental_models: cfg!(debug_assertions),
         runtime_ready: supported() && runtime().is_file() && script("worker.py").is_file(),
         preparing: PREPARE_LOCK.try_lock().is_err(),
         preparing_model: preparation.as_ref().map(|p| p.0.clone()),
@@ -151,6 +154,9 @@ pub async fn cantonese_prepare_model<R: Runtime>(
     app: AppHandle<R>,
     model: String,
 ) -> Result<(), String> {
+    if !cfg!(debug_assertions) && !model.starts_with("qwen3-asr-") {
+        return Err("This experimental model is available in development builds.".into());
+    }
     if !known(&model) && model != "buzz-cantonese" {
         return Err("Unknown Cantonese model".into());
     }

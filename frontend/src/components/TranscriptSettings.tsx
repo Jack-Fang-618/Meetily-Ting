@@ -127,7 +127,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectGroup>
                                         <SelectLabel>On device · Audio stays on this device</SelectLabel>
                                         <SelectItem value="parakeet">Parakeet · Fast English captions</SelectItem>
-                                        <SelectItem value="localQwen">Qwen / BuzzASR · Mandarin and Cantonese</SelectItem>
+                                        <SelectItem value="localQwen">Local ASR · Mandarin and Cantonese</SelectItem>
                                         <SelectItem value="localWhisper">Whisper · Multilingual, multiple sizes</SelectItem>
                                     </SelectGroup>
                                     <SelectGroup>
