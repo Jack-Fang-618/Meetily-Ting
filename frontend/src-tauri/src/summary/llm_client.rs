@@ -55,13 +55,13 @@ pub fn build_openai_compat_chat_body(
     temperature: Option<f32>,
     top_p: Option<f32>,
 ) -> serde_json::Value {
-    let (max_tokens_val, temperature_val, top_p_val) = if *provider == LLMProvider::CustomOpenAI {
+    let (max_tokens_val, temperature_val, top_p_val) = if matches!(provider, LLMProvider::CustomOpenAI | LLMProvider::Aliyun) {
         (max_tokens, temperature, top_p)
     } else {
         (None, None, None)
     };
 
-    serde_json::json!(ChatRequest {
+    let mut body = serde_json::json!(ChatRequest {
         model: model_name.to_string(),
         messages: vec![
             ChatMessage {
@@ -77,7 +77,9 @@ pub fn build_openai_compat_chat_body(
         temperature: temperature_val,
         top_p: top_p_val,
         reasoning_effort: (*provider == LLMProvider::Ollama).then_some("none"),
-    })
+    });
+    if *provider == LLMProvider::Aliyun { body["enable_thinking"] = serde_json::json!(false); }
+    body
 }
 
 // Generic structure for OpenAI-compatible API chat responses
@@ -220,6 +222,7 @@ pub enum LLMProvider {
     OpenRouter,
     BuiltInAI,
     CustomOpenAI,
+    Aliyun,
 }
 
 impl LLMProvider {
@@ -233,6 +236,7 @@ impl LLMProvider {
             "openrouter" => Ok(Self::OpenRouter),
             "builtin-ai" | "local-llama" | "localllama" => Ok(Self::BuiltInAI),
             "custom-openai" => Ok(Self::CustomOpenAI),
+            "aliyun" => Ok(Self::Aliyun),
             _ => Err(format!("Unsupported LLM provider: {}", s)),
         }
     }
@@ -320,7 +324,7 @@ pub(crate) async fn generate_summary(
                 header::HeaderMap::new(),
             )
         }
-        LLMProvider::CustomOpenAI => {
+        LLMProvider::CustomOpenAI | LLMProvider::Aliyun => {
             let endpoint = custom_openai_endpoint
                 .ok_or_else(|| "Custom OpenAI endpoint not configured".to_string())?;
             (
@@ -922,6 +926,7 @@ fn provider_name(provider: &LLMProvider) -> &str {
         LLMProvider::BuiltInAI => "Built-in AI",
         LLMProvider::OpenRouter => "OpenRouter",
         LLMProvider::CustomOpenAI => "Custom OpenAI",
+        LLMProvider::Aliyun => "Alibaba Cloud",
     }
 }
 

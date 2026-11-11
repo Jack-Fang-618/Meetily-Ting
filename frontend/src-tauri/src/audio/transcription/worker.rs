@@ -119,6 +119,8 @@ pub fn start_transcription_task<R: Runtime>(
                     warn!("⚠️ Worker {} pre-validation: {} model not loaded - chunks may be skipped", worker_id, engine_name);
                 }
 
+                let mut previous_text = String::new();
+                let mut previous_end = 0.0;
                 loop {
                     // Try to get a chunk to process
                     let chunk = {
@@ -161,6 +163,14 @@ pub fn start_transcription_task<R: Runtime>(
                             .await
                             {
                                 Ok((transcript, confidence_opt, is_partial)) => {
+                                    let merged = if chunk_timestamp + 0.001 < previous_end {
+                                        crate::audio::live_windows::trim_overlap(&previous_text, &transcript).to_owned()
+                                    } else {
+                                        transcript.clone()
+                                    };
+                                    previous_end = chunk_timestamp + chunk_duration;
+                                    previous_text = transcript;
+                                    let transcript = merged;
                                     let confidence_str = match confidence_opt {
                                         Some(c) => format!("{:.2}", c),
                                         None => "N/A".to_string(),
@@ -424,6 +434,11 @@ async fn transcribe_chunk_with_provider<R: Runtime>(
             samples: 0,
             minimum: 1600, // 100ms at 16kHz
         });
+    }
+
+    // Continuous live windows also include digital silence.
+    if speech_samples.iter().all(|&sample| sample == 0.0) {
+        return Ok((String::new(), None, false));
     }
 
     // Calculate energy for logging/monitoring only

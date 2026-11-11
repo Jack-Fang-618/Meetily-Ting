@@ -308,7 +308,7 @@ export function useDownloadProgressToast() {
 
       const downloadData: DownloadProgress = {
         modelName: model,
-        displayName: `Summary Model (${model})`,
+        displayName: `Language Model (${model})`,
         progress: progress ?? 0,
         downloadedMb: downloaded_mb ?? 0,
         totalMb: getDownloadTotalMb(total_mb, model),

@@ -118,6 +118,13 @@ pub(super) fn read_config(path: &Path) -> Result<CloudConfig> {
     CloudConfig::validate(&c)?;
     Ok(c)
 }
+/// Shared language-model credentials. Never return the key to the webview.
+pub(crate) fn language_model_connection<R: Runtime>(app: &AppHandle<R>) -> Result<(String, String)> {
+    let config = read_config(&root(app)?)?;
+    let key = credential(app, &config.region)?.filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("Configure your Alibaba Cloud key in Transcription settings first."))?;
+    Ok((format!("{}/compatible-mode/v1", config.base()), key))
+}
 fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     use std::io::Write;
     std::fs::create_dir_all(path.parent().unwrap())?;

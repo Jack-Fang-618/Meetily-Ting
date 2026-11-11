@@ -1,0 +1,15 @@
+name: Ting Windows pilot
+on:
+  push:
+    branches: [codex/ting-dev-isolation]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+
+jobs:
+  installer:
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: windows-2022
+      target: x86_64-pc-windows-msvc
+      build-args: --target x86_64-pc-windows-msvc --bundles nsis
+      upload-artifacts: true

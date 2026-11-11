@@ -334,7 +334,11 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
 
     // Validate that transcription models are available before starting recording
     info!("🔍 Validating transcription model availability before starting recording...");
-    if let Err(validation_error) = if cloud_session.is_none() { transcription::validate_transcription_model_ready(&app).await } else { Ok(()) } {
+    let input_mode = if cloud_session.is_some() {
+        Ok(super::pipeline::LiveInputMode::CloudStream)
+    } else {
+        transcription::validate_transcription_model_ready(&app).await
+    }.map_err(|validation_error| {
         error!("Model validation failed: {}", validation_error);
 
         // Emit error event for frontend - actionable: false to show toast instead of modal
@@ -346,8 +350,8 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
             "phase": "startup"
         }));
 
-        return Err(validation_error);
-    }
+        validation_error
+    })?;
     info!("✅ Transcription model validation passed");
 
     // Notify frontend that startup has begun (surfaces STARTING state)
@@ -405,7 +409,7 @@ pub async fn start_recording_with_meeting_name<R: Runtime>(
 
     // Start recording with resolved devices (replaces start_recording_with_defaults_and_auto_save call)
     let transcription_receiver = manager
-        .start_recording(microphone_device, system_device, auto_save || cloud_session.is_some(), cloud_session.is_some())
+        .start_recording(microphone_device, system_device, auto_save || cloud_session.is_some(), input_mode)
         .await
         .map_err(|error| map_recording_start_error(&app, error))?;
 
@@ -531,7 +535,11 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
 
     // Validate that transcription models are available before starting recording
     info!("🔍 Validating transcription model availability before starting recording...");
-    if let Err(validation_error) = if cloud_session.is_none() { transcription::validate_transcription_model_ready(&app).await } else { Ok(()) } {
+    let input_mode = if cloud_session.is_some() {
+        Ok(super::pipeline::LiveInputMode::CloudStream)
+    } else {
+        transcription::validate_transcription_model_ready(&app).await
+    }.map_err(|validation_error| {
         error!("Model validation failed: {}", validation_error);
 
         // Emit error event for frontend - actionable: false to show toast instead of modal
@@ -543,8 +551,8 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
             "phase": "startup"
         }));
 
-        return Err(validation_error);
-    }
+        validation_error
+    })?;
     info!("✅ Transcription model validation passed");
 
     // Notify frontend that startup has begun (surfaces STARTING state)
@@ -599,7 +607,7 @@ pub async fn start_recording_with_devices_and_meeting<R: Runtime>(
 
     // Start recording with specified devices and auto_save setting
     let transcription_receiver = manager
-        .start_recording(mic_device, system_device, auto_save || cloud_session.is_some(), cloud_session.is_some())
+        .start_recording(mic_device, system_device, auto_save || cloud_session.is_some(), input_mode)
         .await
         .map_err(|error| map_recording_start_error(&app, error))?;
 

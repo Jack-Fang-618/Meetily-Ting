@@ -471,7 +471,7 @@ export function DownloadProgressStep() {
             {state.status === 'cancelled' ? 'Download cancelled' : 'Download Error'}
           </p>
           {state.error && <p className="text-xs text-red-500 mt-1">{state.error}</p>}
-          {(title === 'Transcription Engine' || title === 'Summary Engine') && (
+          {(title === 'Transcription Engine' || title === 'Language Model') && (
             <button
               onClick={title === 'Transcription Engine' ? handleRetryDownload : handleRetrySummaryDownload}
               className="mt-3 w-full h-9 px-4 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
@@ -506,7 +506,7 @@ export function DownloadProgressStep() {
           )}
 
           {renderDownloadCard(
-            'Summary Engine',
+            'Language Model',
             <Sparkles className="w-5 h-5 text-gray-600" />,
             summaryState,
             getSummaryModelSizeLabel(selectedSummaryModel || recommendedSummaryModel),

@@ -57,3 +57,17 @@ STT Provider 与文本 LLM Provider 分开。将来总结和逐字稿校订可�
 完善说话人、导出、可选教育引导、网站和安装包。BYOK／平台托管与收费留到后期。开发用本地服务只是原型手段，不是最终让用户配置环境的产品方案。
 
 每阶段单独提交并验证；先不批量接全部模型，不做训练，不重写采集系统。当前建议下一步是阶段 1 的本地小样本实验；专项候选同时验证 BuzzASR 的 GGML 转换和 Qwen 粤语 LoRA 的合并／MLX 路线，见 [专项接入调查](cantonese-specialist-integration.md)。
+
+### 2026-11-10: language-model role and live translation
+
+Rename user-facing “Summary Model” settings to “Language Model”: summary, translation, and future context correction share provider infrastructure. Tasks may use different models. Add Bailian LLM using the user's existing Keychain credentials, independent of ASR. Caption English→Chinese / Cantonese→written Chinese implemented as opt-in view-only text translation; provisional cloud default qwen3.8-flash, selectable qwen3.7-plus and legacy aliases; local Qwen3.5 4B experimental. Evaluation and native acceptance checklist: docs/caption-translation.md. Phase 2/3 correction suggestions, confidence evidence and human approval are not implemented by this translation feature.
+
+### 2026-11-10 follow-up
+- Added bounded gain for quiet system playback and transparent Popover caption surface with 0–100% tint. Native listening/visual acceptance pending.
+- Added opt-in experimental direct Bailian audio translation after English/read Cantonese/mixed Cantonese API smoke tests. Existing sentence translation retained; additional audio upload and billing disclosed. Not a formal benchmark or guarantee of word-for-word accuracy.
+
+### Local live caption latency follow-up
+- Live capture VAD now emits six-second segments while continuous speech is still active, retaining 500ms of unsettled audio for VAD end trimming. Final end/stop paths emit only the previously unsubmitted tail. File import/retranscription segmentation remains unchanged.
+- This is bounded batch recognition, not token-streaming ASR: approximate delay is 6.5 seconds plus inference and queue time. Natural pauses can produce earlier results. Shorter context can affect word boundaries/accuracy, especially Whisper; real audio comparison remains pending. Large models slower than real time can still accumulate delay.
+- Regression compares live and original VAD output sample-for-sample, with and without trailing silence, and confirms delivery before the pause, timestamp ordering, and segment bounds.
+- Native fullscreen approach revised to NSPanel after the prior flag-only fix failed user acceptance.

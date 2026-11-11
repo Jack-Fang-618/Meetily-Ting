@@ -303,6 +303,6 @@ function MainApplicationLayout({
 // recording controls and credential queries. It only observes caption events.
 export default function RootLayout({children}:{children:React.ReactNode}) {
   const pathname=usePathname();
-  if(pathname==='/captions') return <html lang="en"><body className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>{children}</body></html>;
+  if(pathname==='/captions') return <html lang="en" style={{background:"transparent"}}><body style={{background:"transparent"}} className={`${sourceSans3.variable} font-sans antialiased bg-transparent`}>{children}</body></html>;
   return <MainApplicationLayout>{children}</MainApplicationLayout>;
 }

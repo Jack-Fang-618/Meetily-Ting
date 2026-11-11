@@ -169,12 +169,12 @@ impl AudioStream {
         info!("✅ Stream: Core Audio stream created with sample rate: {} Hz", sample_rate);
 
         // Create audio capture processor for pipeline integration
-        // CRITICAL: Core Audio tap is MONO (with_mono_global_tap_excluding_processes)
+        // CoreAudioStream explicitly downmixes its stereo tap to mono.
         let capture = AudioCapture::new(
             device.clone(),
             state.clone(),
             sample_rate,
-            1, // Core Audio tap is MONO (not stereo!)
+            1, // Stream output is one sample per frame.
             device_type,
             recording_sender,
         );

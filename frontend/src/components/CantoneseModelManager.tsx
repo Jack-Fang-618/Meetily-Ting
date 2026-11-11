@@ -89,7 +89,7 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
   const active = preparing || status.preparing_model;
   return <div className="space-y-3">
     <p className="text-sm text-gray-600">Audio stays on your device. Original Qwen is recommended for Mandarin-dominant recordings and also supports English and Cantonese. Start with Qwen3-ASR 0.6B. Cantonese fine-tunes favor written Chinese output.</p>
-    <p className="text-xs text-gray-500">Qwen transcribes in segments; live speed depends on your Mac. Preparation may need extra disk space. Experimental models have not completed on-device validation.</p>
+    <p className="text-xs text-gray-500">Live speed depends on your device. Model preparation may require extra disk space.</p>
     {!status.runtime_ready && <p role="alert" className="text-sm text-amber-700">The local runtime is unavailable. This development build requires Apple Silicon and the Ting runtime setup.</p>}
     {models.map(model => {
       const modelStatus: ModelStatus = active === model.id ? { Downloading: { progress: progress ?? 0 } }
@@ -98,7 +98,7 @@ export function CantoneseModelManager({ selectedModel, onSelect }: Props) {
         model={{ name: model.id, size_mb: model.size_mb, status: modelStatus }} displayName={model.label}
         icon={model.id === 'buzz-cantonese' ? '🏠' : '🎙️'}
         description={model.id.startsWith('qwen3-yue') ? 'Cantonese fine-tune · Written Chinese output' : model.id === 'buzz-cantonese' ? 'Cantonese fine-tune · Whisper engine' : 'Original · Recommended for Mandarin-dominant audio · Also supports English and Cantonese'}
-        badge={model.id.includes('1.7b') || model.id === 'buzz-cantonese' ? 'Experimental' : undefined}
+        badge={model.id === 'qwen3-asr-1.7b' ? 'Live captions · Higher accuracy in testing' : model.id.includes('1.7b') ? 'Speed not yet tested' : model.id === 'buzz-cantonese' ? 'Slower · File transcription' : 'Fast · Live captions'}
         isSelected={selectedModel === model.id} isSelecting={selecting === model.id}
         disabled={!!selecting || !!active || !status.runtime_ready || status.preparing}
         isDownloading={active === model.id} isCancelling={active === model.id && cancelling}

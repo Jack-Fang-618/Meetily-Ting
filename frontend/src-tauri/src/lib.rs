@@ -40,6 +40,8 @@ pub mod api;
 pub mod audio;
 pub mod config;
 mod captions;
+mod caption_translation;
+mod live_translation;
 pub mod console_utils;
 pub mod database;
 pub mod notifications;
@@ -469,6 +471,8 @@ pub fn run() {
     log::set_max_level(log::LevelFilter::Info);
 
     let mut builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    { builder = builder.plugin(tauri_nspanel::init()); }
     #[cfg(debug_assertions)]
     {
         builder = builder.append_invoke_initialization_script(r#"
@@ -637,7 +641,19 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label()=="ting-captions" && matches!(event,tauri::WindowEvent::Destroyed) {live_translation::close();}
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                #[cfg(target_os="macos")]
+                if window.label()=="ting-captions" {
+                    use tauri_nspanel::ManagerExt;
+                    if window.app_handle().get_webview_panel("ting-captions").is_ok() {
+                        api.prevent_close();
+                        let app=window.app_handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error)=captions::close_caption_window(app).await {log::warn!("Caption close failed: {error}");}
+                        });
+                    }
+                }
                 if window.label() == "main" {
                     api.prevent_close();
                     if let Err(e) = window.hide() {
@@ -650,6 +666,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             captions::open_caption_window,
+            captions::close_caption_window,
+            caption_translation::translate_caption,
+            live_translation::start_live_translation,
+            live_translation::stop_live_translation,
             dev_frontend_diagnostic,
             start_recording,
             stop_recording,

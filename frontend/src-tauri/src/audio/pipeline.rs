@@ -23,7 +23,7 @@ use super::vad::{ContinuousVadProcessor};
 /// as system audio) a 2000ms redemption keeps one VAD segment open
 /// indefinitely, withholds live transcript emission, and overruns the
 /// accumulated-speech-buffer warning threshold. Bounded live segmentation
-/// during continuous speech is tracked separately in #756.
+/// now caps delivery at six seconds plus a 500ms unsettled tail.
 const VAD_REDEMPTION_TIME_MS: u32 = 500;
 
 /// Ring buffer for synchronized audio mixing
@@ -223,6 +223,7 @@ pub struct AudioCapture {
     high_pass_filter: Arc<std::sync::Mutex<Option<HighPassFilter>>>,
     // EBU R128 normalizer for microphone audio (per-device, stateful)
     normalizer: Arc<std::sync::Mutex<Option<LoudnessNormalizer>>>,
+    playback_gain: Arc<std::sync::Mutex<super::capture::downmix::PlaybackGain>>,
     // Note: Using global recording timestamp for synchronization
 }
 
@@ -321,7 +322,7 @@ impl AudioCapture {
             (ns, hpf, norm)
         } else {
             // System audio: no enhancement needed
-            info!("ℹ️ System audio '{}' captured raw (no enhancement)", device.name);
+            info!("ℹ️ System audio '{}' uses bounded playback gain", device.name);
             (None, None, None)
         };
 
@@ -391,6 +392,7 @@ impl AudioCapture {
             noise_suppressor: Arc::new(std::sync::Mutex::new(noise_suppressor)),
             high_pass_filter: Arc::new(std::sync::Mutex::new(high_pass_filter)),
             normalizer: Arc::new(std::sync::Mutex::new(normalizer)),
+            playback_gain: Arc::new(std::sync::Mutex::new(Default::default())),
             // Using global recording time for sync
         }
     }
@@ -522,6 +524,9 @@ impl AudioCapture {
         }
 
         // AUDIO ENHANCEMENT PIPELINE (Microphone Only)
+        if matches!(self.device_type, DeviceType::System) {
+            if let Ok(mut gain)=self.playback_gain.lock() {gain.process(&mut mono_data, if self.needs_resampling {48000}else{self.sample_rate});}
+        }
         // Processing order is critical: high-pass → noise suppression → normalization
         // This ensures noise is removed before being amplified by the normalizer
         if matches!(self.device_type, DeviceType::Microphone) {
@@ -690,6 +695,9 @@ impl AudioCapture {
 
 /// VAD-driven audio processing pipeline
 /// Uses Voice Activity Detection to segment speech in real-time and send only speech to Whisper
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LiveInputMode { SpeechSegments, LocalWindows, CloudStream }
+
 pub struct AudioPipeline {
     receiver: mpsc::UnboundedReceiver<AudioChunk>,
     transcription_sender: mpsc::UnboundedSender<AudioChunk>,
@@ -707,7 +715,7 @@ pub struct AudioPipeline {
     mixer: ProfessionalAudioMixer,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
-    cloud_streaming: bool,
+    input_mode: LiveInputMode,
 }
 
 impl AudioPipeline {
@@ -755,9 +763,9 @@ impl AudioPipeline {
         // first, but under continuous system audio it kept a VAD segment open
         // indefinitely and withheld live transcript emission, so live and batch
         // deliberately diverge. Bounded live segments under continuous speech
-        // are tracked in #756.
+        // now dispatch after six seconds plus a 500ms unsettled tail.
         let vad_processor =
-            ContinuousVadProcessor::new(sample_rate, VAD_REDEMPTION_TIME_MS)?;
+            ContinuousVadProcessor::new(sample_rate, VAD_REDEMPTION_TIME_MS)?.with_live_limit(6);
         info!(
             "VAD-driven pipeline: segments dispatched per speech burst (redemption_time={}ms)",
             VAD_REDEMPTION_TIME_MS
@@ -785,7 +793,7 @@ impl AudioPipeline {
             // Initialize professional audio mixing
             ring_buffer,
             mixer,
-            cloud_streaming: false,
+            input_mode: LiveInputMode::SpeechSegments,
             recording_sender_for_mixed: None,  // Will be set by manager
         })
     }
@@ -843,7 +851,7 @@ impl AudioPipeline {
 
                     // STEP 1: Add raw audio to ring buffer for mixing
                     // Microphone audio is already normalized at capture level (AudioCapture)
-                    // System audio remains raw
+                    // System audio has bounded playback gain applied at capture.
                     self.ring_buffer.add_samples(chunk.device_type.clone(), chunk.data);
 
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
@@ -857,9 +865,10 @@ impl AudioPipeline {
                             // System audio at natural levels
                             // Previous 2x gain was causing excessive limiting/distortion
                             let mixed_with_gain = mixed_clean;
+                            crate::live_translation::feed(&mixed_with_gain);
 
                             // STEP 3: Send mixed audio for transcription (VAD + Whisper)
-                            if self.cloud_streaming {
+                            if self.input_mode == LiveInputMode::CloudStream {
                                 // Send continuous mixed PCM, including silence, before local VAD.
                                 for samples in mixed_with_gain.chunks(self.sample_rate as usize / 10) {
                                     let _ = self.transcription_sender.send(AudioChunk {
@@ -929,30 +938,49 @@ impl AudioPipeline {
             }
         }
 
+        // The optional translator receives the final sub-window even with local ASR.
+        if self.input_mode == LiveInputMode::SpeechSegments {
+            let mic:Vec<f32>=self.ring_buffer.mic_buffer.iter().copied().collect();
+            let sys:Vec<f32>=self.ring_buffer.system_buffer.iter().copied().collect();
+            crate::live_translation::feed(&self.mixer.mix_window(&mic,&sys));
+        }
         // Flush any remaining VAD segments
         self.flush_remaining_audio()?;
+        crate::live_translation::finish();
 
         info!("VAD-driven audio pipeline ended");
         Ok(())
     }
 
     fn flush_remaining_audio(&mut self) -> Result<()> {
-        if self.cloud_streaming {
+        if self.input_mode != LiveInputMode::SpeechSegments {
             let remaining = self.ring_buffer.mic_buffer.len().max(self.ring_buffer.system_buffer.len());
             if remaining > 0 {
                 let old_window = self.ring_buffer.window_size_samples;
                 self.ring_buffer.window_size_samples = remaining;
                 if let Some((mic, sys)) = self.ring_buffer.extract_window() {
                     let data = self.mixer.mix_window(&mic, &sys);
+                    crate::live_translation::feed(&data);
                     let chunk = AudioChunk { data, sample_rate:self.sample_rate, timestamp:self.chunk_id_counter as f64 / 10.0,
                         chunk_id:self.chunk_id_counter, device_type:DeviceType::Microphone };
-                    let _ = self.transcription_sender.send(chunk.clone());
+                    if self.input_mode == LiveInputMode::CloudStream {
+                        let _ = self.transcription_sender.send(chunk.clone());
+                    } else {
+                        for segment in self.vad_processor.process_audio(&chunk.data)? {
+                            self.transcription_sender.send(AudioChunk {
+                                data: segment.samples, sample_rate: 16000,
+                                timestamp: segment.start_timestamp_ms / 1000.0,
+                                chunk_id: self.chunk_id_counter, device_type: DeviceType::Microphone,
+                            }).map_err(|_| anyhow::anyhow!("Local transcription receiver closed"))?;
+                            self.chunk_id_counter += 1;
+                        }
+                    }
                     if let Some(sender) = &self.recording_sender_for_mixed { let _ = sender.send(chunk); }
-                    self.chunk_id_counter += 1;
+                    if self.input_mode == LiveInputMode::CloudStream { self.chunk_id_counter += 1; }
                 }
                 self.ring_buffer.window_size_samples = old_window;
             }
-            return Ok(());
+            if self.input_mode == LiveInputMode::CloudStream { return Ok(()); }
         }
         info!("Flushing remaining audio from pipeline (processed {} chunks)", self.processed_chunks);
 
@@ -963,8 +991,8 @@ impl AudioPipeline {
                     let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
 
                     // Send segments >= 50ms (800 samples at 16kHz) - matches main pipeline filter
-                    if segment.samples.len() >= 800 {
-                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
+                    if segment.samples.len() >= 800 || self.input_mode == LiveInputMode::LocalWindows {
+                        info!("📤 Sending final local transcription segment: {:.1}ms duration, {} samples",
                               duration_ms, segment.samples.len());
 
                         let transcription_chunk = AudioChunk {
@@ -1022,7 +1050,7 @@ impl AudioPipelineManager {
         mic_device_kind: super::device_detection::InputDeviceKind,
         system_device_name: String,
         system_device_kind: super::device_detection::InputDeviceKind,
-        cloud_streaming: bool,
+        input_mode: LiveInputMode,
     ) -> Result<()> {
         // Log device information for adaptive buffering
         info!("🎙️ Starting pipeline with device info:");
@@ -1050,7 +1078,8 @@ impl AudioPipelineManager {
         // CRITICAL FIX: Connect recording sender to receive pre-mixed audio
         // This ensures both mic AND system audio are captured in recordings
         pipeline.recording_sender_for_mixed = recording_sender;
-        pipeline.cloud_streaming = cloud_streaming;
+        pipeline.input_mode = input_mode;
+        pipeline.vad_processor.continuous_windows = input_mode == LiveInputMode::LocalWindows;
 
         let handle = tokio::spawn(async move {
             pipeline.run().await

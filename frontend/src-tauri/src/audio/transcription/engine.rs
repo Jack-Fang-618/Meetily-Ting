@@ -52,7 +52,7 @@ impl TranscriptionEngine {
 // ============================================================================
 
 /// Validate that transcription models (Whisper or Parakeet) are ready before starting recording
-pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) -> Result<crate::audio::pipeline::LiveInputMode, String> {
     // Check transcript configuration to determine which engine to validate
     let config = match crate::api::api::api_get_transcript_config(
         app.clone(),
@@ -90,7 +90,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
     match config.provider.as_str() {
         "localQwen" => {
             super::mlx_provider::MlxProvider::load(super::mlx_provider::root(app)?, config.model).await?;
-            Ok(())
+            Ok(crate::audio::pipeline::LiveInputMode::LocalWindows)
         }
         "localWhisper" => {
             info!("🔍 Validating Whisper model...");
@@ -107,7 +107,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
             match crate::whisper_engine::commands::whisper_validate_model_ready_with_config(app).await {
                 Ok(model_name) => {
                     info!("✅ Whisper model validation successful: {} is ready", model_name);
-                    Ok(())
+                    Ok(crate::audio::pipeline::LiveInputMode::LocalWindows)
                 }
                 Err(e) => {
                     warn!("❌ Whisper model validation failed: {}", e);
@@ -131,7 +131,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
             match crate::parakeet_engine::commands::parakeet_validate_model_ready_with_config(app).await {
                 Ok(model_name) => {
                     info!("✅ Parakeet model validation successful: {} is ready", model_name);
-                    Ok(())
+                    Ok(crate::audio::pipeline::LiveInputMode::LocalWindows)
                 }
                 Err(e) => {
                     warn!("❌ Parakeet model validation failed: {}", e);

@@ -85,10 +85,9 @@ impl CoreAudioCapture {
         // When using a tap, the tap provides all the audio we need
         // Including both the tap AND the device creates duplicate audio (echo issue)
 
-        // Create process tap with mono global tap, excluding no processes
-        // Note: Mono tap is more reliable for system audio capture on macOS
-        info!("🎙️ CoreAudio: Creating process tap (global mono tap)...");
-        let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&cidre::ns::Array::new());
+        // Preserve both source channels; downmix explicitly after capture.
+        info!("🎙️ CoreAudio: Creating process tap (global stereo tap)...");
+        let tap_desc = ca::TapDesc::with_stereo_global_tap_excluding_processes(&cidre::ns::Array::new());
         let tap = tap_desc.create_process_tap()
             .map_err(|e| {
                 error!("❌ CoreAudio: Failed to create process tap: {:?}", e);
@@ -176,25 +175,14 @@ impl CoreAudioCapture {
                 ctx.current_sample_rate.store(after, Ordering::Release);
             }
 
-            // Try to get audio data from the buffer list
-            if let Some(view) =
-                av::AudioPcmBuf::with_buf_list_no_copy(&ctx.format, input_data, None)
-            {
-                if let Some(data) = view.data_f32_at(0) {
-                    process_audio_data(ctx, data);
-                }
-            } else if ctx.format.common_format() == av::audio::CommonFormat::PcmF32 {
-                // Fallback: manual extraction if AudioPcmBuf fails
-                let first_buffer = &input_data.buffers[0];
-                let byte_count = first_buffer.data_bytes_size as usize;
-                let float_count = byte_count / std::mem::size_of::<f32>();
-
-                if float_count > 0 && first_buffer.data != std::ptr::null_mut() {
-                    let data = unsafe {
-                        std::slice::from_raw_parts(first_buffer.data as *const f32, float_count)
-                    };
-                    process_audio_data(ctx, data);
-                }
+            // Core Audio owns a variable-length AudioBufferList for this callback.
+            // Read all reported buffers, not only channel zero. Both planar and
+            // interleaved Float32 layouts are supported; downstream stays mono.
+            if ctx.format.common_format() == av::audio::CommonFormat::PcmF32 {
+                let buffers = unsafe { std::slice::from_raw_parts(
+                    input_data.buffers.as_ptr(), input_data.number_buffers as usize) };
+                let mono = unsafe { downmix_buffers(buffers) };
+                process_audio_data(ctx, &mono);
             }
 
             os::Status::NO_ERR
@@ -292,6 +280,40 @@ impl CoreAudioCapture {
             waker_state,
             current_sample_rate,
         })
+    }
+}
+
+/// Caller guarantees each non-null buffer points to the advertised Float32 bytes.
+unsafe fn downmix_buffers(buffers: &[cat::AudioBuf]) -> Vec<f32> {
+    let mut channels = Vec::new();
+    for buffer in buffers {
+        let count = buffer.number_channels as usize;
+        if buffer.data.is_null() || count == 0 { continue; }
+        let samples = unsafe { std::slice::from_raw_parts(
+            buffer.data as *const f32, buffer.data_bytes_size as usize / 4) };
+        for channel in 0..count {
+            channels.push(samples.chunks_exact(count).map(|frame| frame[channel]).collect::<Vec<_>>());
+        }
+    }
+    channels.first().map(|left| super::downmix::speech_mono(left, channels.get(1).map(Vec::as_slice))).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod stereo_layout_tests {
+    use super::*;
+    fn buffer(data: &mut [f32], channels: u32) -> cat::AudioBuf {
+        cat::AudioBuf { number_channels: channels, data_bytes_size: std::mem::size_of_val(data) as u32, data: data.as_mut_ptr().cast() }
+    }
+    #[test]
+    fn planar_and_interleaved_keep_both_speakers_in_order() {
+        let mut left = [0.2f32,-0.3,0.0,0.0];
+        let mut right = [0.0f32,0.0,0.4,-0.5];
+        let mut interleaved = [0.2f32,0.0,-0.3,0.0,0.0,0.4,0.0,-0.5];
+        let planar = unsafe { downmix_buffers(&[buffer(&mut left,1),buffer(&mut right,1)]) };
+        let packed = unsafe { downmix_buffers(&[buffer(&mut interleaved,2)]) };
+        assert_eq!(planar,packed);
+        assert_eq!(planar.len(),4);
+        assert!(planar[0]>0.1 && planar[1]< -0.1 && planar[2]>0.1 && planar[3]< -0.1);
     }
 }
 

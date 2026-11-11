@@ -1,7 +1,7 @@
 import { AliyunSettings } from './AliyunSettings';
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Select, SelectContent, SelectGroup, SelectLabel, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
@@ -124,10 +124,16 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     <SelectValue placeholder="Select provider" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
-                                    <SelectItem value="localQwen">🎙️ Local Qwen / BuzzASR</SelectItem>
-                                    <SelectItem value="aliyun">☁️ Alibaba Cloud (Live & files)</SelectItem>
-                                    <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
+                                    <SelectGroup>
+                                        <SelectLabel>On device · Audio stays on this device</SelectLabel>
+                                        <SelectItem value="parakeet">Parakeet · Fast English captions</SelectItem>
+                                        <SelectItem value="localQwen">Qwen / BuzzASR · Mandarin and Cantonese</SelectItem>
+                                        <SelectItem value="localWhisper">Whisper · Multilingual, multiple sizes</SelectItem>
+                                    </SelectGroup>
+                                    <SelectGroup>
+                                        <SelectLabel>Cloud · Audio is sent to the provider</SelectLabel>
+                                        <SelectItem value="aliyun">Alibaba Cloud · Live captions and files</SelectItem>
+                                    </SelectGroup>
                                     {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
                                     <SelectItem value="groq">☁️ Groq</SelectItem>

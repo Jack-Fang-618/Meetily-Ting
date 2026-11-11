@@ -35,7 +35,7 @@ export function SetupOverviewStep() {
     {
       number: 2,
       type: 'summarization',
-      title: 'Download Summarization Engine',
+      title: 'Download Language Model',
     },
   ];
 

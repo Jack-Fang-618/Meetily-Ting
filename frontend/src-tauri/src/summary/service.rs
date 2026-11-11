@@ -360,7 +360,7 @@ impl SummaryService {
         };
 
         // Validate and setup api_key, Flexible for Ollama, BuiltInAI, and CustomOpenAI
-        let api_key = if provider == LLMProvider::Ollama || provider == LLMProvider::BuiltInAI || provider == LLMProvider::CustomOpenAI {
+        let api_key = if provider == LLMProvider::Ollama || provider == LLMProvider::BuiltInAI || provider == LLMProvider::CustomOpenAI || provider == LLMProvider::Aliyun {
             // These providers don't require API keys from the standard database column
             String::new()
         } else {
@@ -395,7 +395,16 @@ impl SummaryService {
 
         // Get CustomOpenAI config if provider is CustomOpenAI
         let (custom_openai_endpoint, custom_openai_api_key, custom_openai_max_tokens, custom_openai_temperature, custom_openai_top_p) =
-            if provider == LLMProvider::CustomOpenAI {
+            if provider == LLMProvider::Aliyun {
+                match crate::audio::transcription::aliyun::language_model_connection(&_app) {
+                    Ok((endpoint, key)) => (Some(endpoint), Some(key), None, Some(0.2), None),
+                    Err(_) => {
+                        Self::fail_and_cleanup(&pool, &meeting_id, started_at,
+                            "Alibaba Cloud key unavailable. Configure it in Transcription settings.").await;
+                        return;
+                    }
+                }
+            } else if provider == LLMProvider::CustomOpenAI {
                 match SettingsRepository::get_custom_openai_config(&pool).await {
                     Ok(Some(config)) => {
                         info!("✓ Using custom OpenAI endpoint: {}", config.endpoint);
@@ -423,7 +432,7 @@ impl SummaryService {
             };
 
         // For CustomOpenAI, use its API key (if any) instead of the empty string
-        let final_api_key = if provider == LLMProvider::CustomOpenAI {
+        let final_api_key = if provider == LLMProvider::CustomOpenAI || provider == LLMProvider::Aliyun {
             custom_openai_api_key.unwrap_or_default()
         } else {
             api_key

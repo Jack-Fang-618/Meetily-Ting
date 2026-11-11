@@ -31,7 +31,7 @@ import { cn, isOllamaNotInstalledError } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export interface ModelConfig {
-  provider: 'ollama' | 'groq' | 'claude' | 'openai' | 'openrouter' | 'builtin-ai' | 'custom-openai';
+  provider: 'ollama' | 'groq' | 'claude' | 'openai' | 'openrouter' | 'builtin-ai' | 'custom-openai' | 'aliyun';
   model: string;
   whisperModel: string;
   apiKey?: string | null;
@@ -229,6 +229,7 @@ export function ModelSettingsModal({
     groq: groqModels.length > 0 ? groqModels : GROQ_FALLBACK_MODELS,
     openai: openaiModels.length > 0 ? openaiModels : OPENAI_FALLBACK_MODELS,
     openrouter: openRouterModels.map((m) => m.id),
+    aliyun: ['qwen3.8-flash', 'qwen3.7-plus', 'qwen-plus', 'qwen-flash'],
     'builtin-ai': builtinAiModels.map((m) => m.name),
     'custom-openai': customOpenAIModel ? [customOpenAIModel] : [], // User specifies model manually
   };
@@ -636,7 +637,7 @@ export function ModelSettingsModal({
 
     const updatedConfig = {
       ...modelConfig,
-      apiKey: typeof apiKey === 'string' ? apiKey.trim() || null : null,
+      apiKey: modelConfig.provider === 'aliyun' ? null : typeof apiKey === 'string' ? apiKey.trim() || null : null,
       ollamaEndpoint: modelConfig.provider === 'ollama'
         ? (ollamaEndpoint.trim() || null)
         : (modelConfig.ollamaEndpoint || null),
@@ -804,7 +805,7 @@ export function ModelSettingsModal({
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Model Settings</h3>
+        <h3 className="text-lg font-semibold">Language Model</h3>
       </div>
 
       <div className="space-y-4">
@@ -875,6 +876,7 @@ export function ModelSettingsModal({
               </SelectTrigger>
               <SelectContent className="max-h-64 overflow-y-auto">
                 <SelectItem value="builtin-ai">Built-in AI (Offline, No API needed)</SelectItem>
+                <SelectItem value="aliyun">Alibaba Cloud (Bailian)</SelectItem>
                 <SelectItem value="claude">Claude</SelectItem>
                 <SelectItem value="custom-openai">Custom Server (OpenAI)</SelectItem>
                 <SelectItem value="groq">Groq</SelectItem>
@@ -944,6 +946,7 @@ export function ModelSettingsModal({
           </div>
         </div>
 
+        {modelConfig.provider === 'aliyun' && <p className="text-sm text-muted-foreground">Uses your Alibaba Cloud key and region from Transcription settings. Generating a summary sends transcript text and context to Bailian and may incur charges. This does not change your transcription model.</p>}
         {/* Custom OpenAI Configuration Section */}
         {modelConfig.provider === 'custom-openai' && (
           <div className="space-y-4 border-t pt-4">
