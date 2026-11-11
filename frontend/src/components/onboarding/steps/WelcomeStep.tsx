@@ -10,7 +10,7 @@ export function WelcomeStep() {
   const features = [
     {
       icon: Lock,
-      title: 'Your data never leaves your device',
+      title: 'Keep audio on your device with local models',
     },
     {
       icon: Sparkles,
@@ -24,8 +24,8 @@ export function WelcomeStep() {
 
   return (
     <OnboardingContainer
-      title="Welcome to Meetily"
-      description="Record. Transcribe. Summarize. All on your device."
+      title="Welcome to Ting"
+      description="Transcribe meetings and follow along with live captions."
       step={1}
       hideProgress={true}
     >
