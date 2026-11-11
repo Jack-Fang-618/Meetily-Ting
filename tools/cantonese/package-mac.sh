@@ -11,6 +11,7 @@ app="$stage/Ting Dev.app"
 ditto 'target/release/bundle/macos/Ting Dev.app' "$app"
 root="$app/Contents/Resources/ting-local"
 mkdir -p "$root/tools/cantonese"
+cp tools/transcription-input-limits.json "$root/tools/"
 cp tools/cantonese/{catalog.json,worker.py,audio_segments.py,prepare.py,preparation_progress.py} "$root/tools/cantonese/"
 envdir=.ting-runtime
     base=$("$envdir/bin/python" -c 'import sys; print(sys.base_prefix)')
