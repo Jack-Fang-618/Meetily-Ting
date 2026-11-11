@@ -5,11 +5,41 @@ on:
     paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   installer:
-    uses: ./.github/workflows/build.yml
-    with:
-      platform: windows-2022
-      target: x86_64-pc-windows-msvc
-      build-args: --target x86_64-pc-windows-msvc --bundles nsis
-      upload-artifacts: true
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Configure portable CPU inference
+        shell: pwsh
+        run: |
+          $hook = (Join-Path $env:GITHUB_WORKSPACE ".github/force-portable-ggml.cmake").Replace('\','/')
+          "CMAKE_PROJECT_INCLUDE=$hook" >> $env:GITHUB_ENV
+          "RUSTFLAGS=-C target-cpu=x86-64-v2" >> $env:GITHUB_ENV
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - name: Build local language model helper
+        run: |
+          cargo build --locked --release -p llama-helper
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item frontend/src-tauri/binaries -ItemType Directory -Force
+          Copy-Item target/release/llama-helper.exe frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
+      - run: pnpm tauri build --bundles nsis
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ting-Windows-x64
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
