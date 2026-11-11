@@ -49,14 +49,28 @@ pub struct LocalStatus {
     pub models: Vec<ModelStatus>,
 }
 
-fn repo() -> PathBuf {
+fn runtime_root() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(contents) = exe.parent().and_then(Path::parent) {
+            if contents.ends_with("Contents") {
+                return contents.join("Resources/ting-local");
+            }
+        }
+    }
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 fn runtime() -> PathBuf {
-    repo().join(".ting-runtime/bin/python")
+    runtime_root().join(".ting-runtime/bin/python")
+}
+fn python_command() -> Command {
+    let mut command = Command::new(runtime());
+    command.env_remove("PYTHONHOME").env_remove("PYTHONPATH")
+        .env("PYTHONNOUSERSITE", "1").env("PYTHONDONTWRITEBYTECODE", "1");
+    command
 }
 fn script(name: &str) -> PathBuf {
-    repo().join("tools/cantonese").join(name)
+    runtime_root().join("tools/cantonese").join(name)
 }
 pub fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path()
@@ -165,7 +179,7 @@ pub async fn cantonese_prepare_model<R: Runtime>(
 }
 
 async fn prepare_process<R: Runtime>(app: &AppHandle<R>, model: &str, cancelled: &mut tokio::sync::watch::Receiver<bool>) -> Result<(), String> {
-    let mut command = Command::new(runtime());
+    let mut command = python_command();
     #[cfg(unix)] {
         use std::os::unix::process::CommandExt;
         command.as_std_mut().process_group(0);
@@ -267,7 +281,7 @@ impl Worker {
         if !supported() || !runtime().is_file() {
             return Err("Qwen runtime is not installed on this Mac".into());
         }
-        let mut child = Command::new(runtime())
+        let mut child = python_command()
             .arg("-u")
             .arg(script("worker.py"))
             .arg("--root")
