@@ -10,6 +10,8 @@ import { RecordingStatusBar } from "./RecordingStatusBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { TranscriptSegmentData } from "@/types";
 
+import { SegmentSpeakers } from './MeetingDetails/MeetingSpeakers';
+
 export interface VirtualizedTranscriptViewProps {
     /** Transcript segments to display */
     segments: TranscriptSegmentData[];
@@ -289,6 +291,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         transform: `translateY(${virtualRow.start}px)`,
                                     }}
                                 >
+                                    <SegmentSpeakers segment={segment} />
                                     <TranscriptSegment
                                         id={segment.id}
                                         timestamp={segment.timestamp}
@@ -345,6 +348,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.15 }}
                                 >
+                                    <SegmentSpeakers segment={segment} />
                                     <TranscriptSegment
                                         id={segment.id}
                                         timestamp={segment.timestamp}

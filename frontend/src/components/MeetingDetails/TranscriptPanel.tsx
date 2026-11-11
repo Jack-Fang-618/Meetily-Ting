@@ -1,7 +1,7 @@
 "use client";
 
 import { Transcript, TranscriptSegmentData } from '@/types';
-import { TranscriptView } from '@/components/TranscriptView';
+import { MeetingSpeakers } from './MeetingSpeakers';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
 import { useMemo } from 'react';
@@ -78,6 +78,7 @@ export function TranscriptPanel({
         />
       </div>
 
+      <MeetingSpeakers key={meetingId} meetingId={isRecording || !meetingFolderPath ? undefined : meetingId}>
       {/* Transcript content - use virtualized view for better performance */}
       <div className="flex-1 overflow-hidden pb-4">
         <VirtualizedTranscriptView
@@ -96,6 +97,8 @@ export function TranscriptPanel({
           onLoadMore={onLoadMore}
         />
       </div>
+
+      </MeetingSpeakers>
 
       {/* Custom prompt input at bottom of transcript section */}
       {!isRecording && convertedSegments.length > 0 && (

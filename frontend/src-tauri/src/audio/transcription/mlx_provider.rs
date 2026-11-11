@@ -64,13 +64,13 @@ fn runtime_root() -> PathBuf {
 fn runtime() -> PathBuf {
     runtime_root().join(".ting-runtime/bin/python")
 }
-fn python_command() -> Command {
+pub(crate) fn python_command() -> Command {
     let mut command = Command::new(runtime());
     command.env_remove("PYTHONHOME").env_remove("PYTHONPATH")
         .env("PYTHONNOUSERSITE", "1").env("PYTHONDONTWRITEBYTECODE", "1");
     command
 }
-fn script(name: &str) -> PathBuf {
+pub(crate) fn script(name: &str) -> PathBuf {
     runtime_root().join("tools/cantonese").join(name)
 }
 pub fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
