@@ -45,7 +45,70 @@ def prepare(root):
         stage.rename(root)
 
 
-def analyze(root, ffmpeg, audio, count):
+def calibrate(root, samples, turns, references, count):
+    rate = 16000
+    frame = 320  # 20 ms timeline
+    extractor = so.SpeakerEmbeddingExtractor(
+        so.SpeakerEmbeddingExtractorConfig(model=str(root / 'embed.onnx'), num_threads=2))
+
+    def embedding(clip):
+        stream = extractor.create_stream()
+        stream.accept_waveform(rate, clip)
+        stream.input_finished()
+        vector = np.asarray(extractor.compute(stream))
+        norm = np.linalg.norm(vector)
+        if not np.isfinite(norm) or norm == 0:
+            raise ValueError('Could not identify a voice. Choose a clearer passage.')
+        return vector / norm
+
+    profiles = [[] for _ in range(count)]
+    size = (len(samples) + frame - 1) // frame
+    confirmed = np.full(size, -1, dtype=np.int8)
+    for ref in references:
+        speaker = ref['speaker']
+        start, end = round(ref['start'] * rate), min(len(samples), round(ref['end'] * rate))
+        if speaker not in range(count) or start < 0 or end - start < rate:
+            raise ValueError('Select at least one second of recorded speech per passage.')
+        region = confirmed[round(start/frame):round(end/frame)]
+        if np.any((region >= 0) & (region != speaker)):
+            raise ValueError('Samples for different speakers overlap.')
+        region[:] = speaker
+        clip = samples[start:end]
+        if np.max(np.abs(clip)) < 1e-5:
+            raise ValueError('A selected sample is silent.')
+        # Keep inference bounded even when an imported transcript has long passages.
+        for chunk in np.array_split(clip, max(1, round(len(clip) / (3 * rate)))):
+            profiles[speaker].append(embedding(chunk))
+
+    if not all(profiles):
+        raise ValueError('Select a sample for each speaker.')
+    centers = np.array([np.mean(group, axis=0) for group in profiles])
+    centers /= np.linalg.norm(centers, axis=1, keepdims=True)
+    active = np.zeros((count, size), dtype=bool)
+    for turn in turns:
+        active[turn['speaker'], round(turn['start']*50):round(turn['end']*50)] = True
+    single = active.sum(axis=0) == 1
+    for i in range(0, size, 25):
+        window = slice(i, i+25)
+        speech = single[window]
+        if not speech.any():
+            continue
+        center = i * frame + 4000
+        clip = samples[max(0, center-rate):center+rate]
+        speaker = int(np.argmax(centers @ embedding(clip)))
+        active[:, window] &= ~speech
+        active[speaker, window] |= speech
+    for speaker in range(count):
+        active[speaker, confirmed >= 0] = confirmed[confirmed >= 0] == speaker
+    result = []
+    for speaker, mask in enumerate(active):
+        edges = np.flatnonzero(np.diff(np.r_[False, mask, False]))
+        for start, end in edges.reshape(-1, 2):
+            result.append(dict(start=start/50, end=min(end/50, len(samples)/rate), speaker=speaker))
+    return sorted(result, key=lambda turn: turn['start'])
+
+
+def analyze(root, ffmpeg, audio, count, references=None, segments=None):
     start = time.monotonic()
     config = so.OfflineSpeakerDiarizationConfig(
         segmentation=so.OfflineSpeakerSegmentationModelConfig(
@@ -62,11 +125,31 @@ def analyze(root, ffmpeg, audio, count):
         raise ValueError('The recording contains no audio samples.')
     turns = engine.process(samples).sort_by_start_time()
     ids = {}
-    return dict(seconds=time.monotonic() - start, duration=len(samples)/16000,
-                turns=[dict(start=t.start, end=t.end, speaker=ids.setdefault(t.speaker, len(ids))) for t in turns])
+    turns = [dict(start=t.start, end=t.end, speaker=ids.setdefault(t.speaker, len(ids))) for t in turns]
+    if references is not None:
+        turns = calibrate(root, samples, turns, references, count)
+    dialogue = {}
+    model_root = root.parent / 'cantonese'
+    if segments:
+        from dialogue import build_dialogue
+        from worker import Worker
+        worker = Worker(model_root)
+        for model in ('qwen3-asr-1.7b', 'qwen3-asr-0.6b'):
+            if (model_root / model / 'ting-ready.json').exists():
+                def recognize(a, b):
+                    return worker.request(dict(model=model, samples=samples[round(a*16000):round(b*16000)]))['text']
+                from contextlib import redirect_stdout
+                with redirect_stdout(sys.stderr):
+                    dialogue = build_dialogue(segments, turns, recognize)
+                break
+    return dict(dialogue=dialogue, seconds=time.monotonic() - start, duration=len(samples)/16000,
+                turns=turns, references=references or [])
 
 
 if __name__ == '__main__':
-    folder, ffmpeg_path, recording, count = sys.argv[1:]
+    folder, ffmpeg_path, recording, count = sys.argv[1:5]
+    job = json.loads(Path(sys.argv[5]).read_text()) if len(sys.argv) > 5 else {}
+    if isinstance(job, list):
+        job = dict(references=job)
     prepare(Path(folder))
-    print(json.dumps(analyze(Path(folder), ffmpeg_path, recording, int(count))))
+    print(json.dumps(analyze(Path(folder), ffmpeg_path, recording, int(count), job.get('references'), job.get('segments'))))

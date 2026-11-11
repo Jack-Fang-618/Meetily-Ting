@@ -4,7 +4,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Plus, Pin, PinOff, X, Captions, Settings2, RotateCcw, ArrowDown } from 'lucide-react';
-import { CLOUD_TRANSLATION_MODELS, DEFAULT_CLOUD_TRANSLATION_MODEL, CaptionTranslationQueue, TranslationMode, TranslationProvider, TranslationResult } from '@/lib/caption-translation';
+import { TRANSLATION_DIRECTIONS, CLOUD_TRANSLATION_MODELS, DEFAULT_CLOUD_TRANSLATION_MODEL, CaptionTranslationQueue, TranslationMode, TranslationProvider, TranslationResult } from '@/lib/caption-translation';
 import { acceptFinal, captionFontSize, CaptionState, emptyCaption, TranslationCaption, updateTranslationHistory } from '@/lib/captions';
 
 type Appearance = { text: string; background: string; opacity: number };
@@ -132,7 +132,7 @@ export function CaptionWindow() {
         else setTranslation(s=>({...s,status:value.message||value.state}));
       });
       if(!active){unlisten();return;}
-      await invoke('start_live_translation',{sessionId,consent:true});
+      await invoke('start_live_translation',{sessionId,consent:true,mode});
       if(!active)await invoke('stop_live_translation',{sessionId});
     };
     start().catch(error=>{if(active){liveEnded.current=true;setTranslation({source:'',result:null,status:String(error)});}});
@@ -179,7 +179,7 @@ export function CaptionTranslationControls({mode,setMode,provider,setProvider,lo
   return <div className="shrink-0 border-b border-white/10 px-4 py-2 text-xs text-slate-300">
     <div className="flex flex-wrap gap-2">
       <select aria-label="Caption translation" className={selectClass} value={mode} onChange={e=>setMode(e.target.value as TranslationMode)}>
-        <option value="off">Original only</option><option value="english">English → Chinese</option><option value="cantonese">Cantonese → Written Chinese</option>
+        <option value="off">Original only</option>{Object.entries(TRANSLATION_DIRECTIONS).map(([id,label])=><option key={id} value={id}>{label}</option>)}
       </select>
       {mode!=='off' && <select aria-label="Translation language model" className={selectClass} value={provider} onChange={e=>{setProvider(e.target.value as TranslationProvider);setCloudConsent(false);}}>
         <option value="local">Local · Ollama</option><option value="aliyun">Bailian · Sentence translation</option><option value="realtime">Bailian · Live audio (Experimental)</option>

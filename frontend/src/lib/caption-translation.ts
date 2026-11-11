@@ -1,6 +1,14 @@
 export const CLOUD_TRANSLATION_MODELS = ['qwen3.8-flash','qwen3.7-plus','qwen-plus','qwen-flash'] as const;
 export const DEFAULT_CLOUD_TRANSLATION_MODEL = 'qwen3.8-flash';
-export type TranslationMode = 'off' | 'english' | 'cantonese';
+export const TRANSLATION_DIRECTIONS = {
+  english: 'English → Mandarin (written Chinese)',
+  'zh-en': 'Mandarin → English',
+  cantonese: 'Cantonese → Mandarin (written Chinese)',
+  'zh-yue': 'Mandarin → Cantonese',
+  'en-yue': 'English → Cantonese',
+  'yue-en': 'Cantonese → English',
+} as const;
+export type TranslationMode = 'off' | keyof typeof TRANSLATION_DIRECTIONS;
 export type TranslationProvider = 'local' | 'aliyun' | 'realtime';
 export type TranslationResult = {text:string;model:string;elapsed_ms:number};
 export type TranslationJob = {id?:string;text:string;mode:Exclude<TranslationMode,'off'>;provider:TranslationProvider;cloudConsent:boolean;model:string};

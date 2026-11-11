@@ -50,8 +50,9 @@ impl Captions {
  }
 }
 #[tauri::command]
-pub async fn start_live_translation<R:Runtime>(app:AppHandle<R>,session_id:String,consent:bool)->Result<(),String>{
+pub async fn start_live_translation<R:Runtime>(app:AppHandle<R>,session_id:String,consent:bool,mode:String)->Result<(),String>{
  if !consent{return Err("Live translation requires consent to send recording audio to Bailian.".into());}
+ let (_,target)=crate::caption_translation::languages(&mode)?;
  close();let token=CancellationToken::new();*ACTIVE.lock().unwrap()=Some((session_id.clone(),token.clone()));
  let result=async {
  let (endpoint,key)=crate::audio::transcription::aliyun::language_model_connection(&app).map_err(|_|"Configure your Bailian key and region first.")?;
@@ -59,7 +60,7 @@ pub async fn start_live_translation<R:Runtime>(app:AppHandle<R>,session_id:Strin
  let mut req=format!("{host}/api-ws/v1/realtime?model=qwen3.8-livetranslate-flash-realtime").into_client_request().map_err(|_|"Invalid live translation endpoint")?;
  req.headers_mut().insert("Authorization",format!("Bearer {key}").parse().map_err(|_|"Invalid credential")?);
  let (mut ws,_)=tokio::time::timeout(Duration::from_secs(15),tokio_tungstenite::connect_async(req)).await.map_err(|_|"Live translation connection timed out")?.map_err(|_|"Live translation unavailable: check key, model access and region.")?;
- let config=json!({"type":"session.update","session":{"output_modalities":["text"],"translation":{"language":"zh"},"audio":{"input":{"format":{"type":"pcm","sample_rate":16000}},"output":{"voice":"Tina"}}}});
+ let config=json!({"type":"session.update","session":{"output_modalities":["text"],"translation":{"language":target},"audio":{"input":{"format":{"type":"pcm","sample_rate":16000}},"output":{"voice":"Tina"}}}});
  tokio::time::timeout(Duration::from_secs(15),async {
   while let Some(message)=ws.next().await {
    let Message::Text(text)=message.map_err(|_|"Live translation connection failed")? else {continue};

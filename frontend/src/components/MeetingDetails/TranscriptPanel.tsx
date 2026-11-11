@@ -4,6 +4,9 @@ import { Transcript, TranscriptSegmentData } from '@/types';
 import { MeetingSpeakers } from './MeetingSpeakers';
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
+import { NotebookPen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMemo } from 'react';
 
 interface TranscriptPanelProps {
@@ -67,7 +70,7 @@ export function TranscriptPanel({
   return (
     <div className="flex h-full min-w-0 w-full bg-white flex-col relative @container">
       {/* Title area */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="flex flex-wrap items-center justify-center gap-2 p-3 border-b border-gray-200">
         <TranscriptButtonGroup
           transcriptCount={usePagination ? (totalCount ?? convertedSegments.length) : (transcripts?.length || 0)}
           onCopyTranscript={onCopyTranscript}
@@ -76,6 +79,20 @@ export function TranscriptPanel({
           meetingFolderPath={meetingFolderPath}
           onRefetchTranscripts={onRefetchTranscripts}
         />
+        {!isRecording && convertedSegments.length > 0 && <Popover key={meetingId}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm"><NotebookPen size={15} className="mr-2" />Context
+              {customPrompt.trim() && <span aria-label="Context added" className="ml-2 size-1.5 rounded-full bg-teal-600" />}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 max-w-[90vw]">
+            <label className="block text-sm font-medium">Summary context
+              <textarea rows={4} placeholder="People, terminology, or meeting objectives…"
+                className="mt-2 w-full resize-y rounded-md border px-3 py-2 font-normal"
+                value={customPrompt} onChange={e => onPromptChange(e.target.value)} />
+            </label>
+          </PopoverContent>
+        </Popover>}
       </div>
 
       <MeetingSpeakers key={meetingId} meetingId={isRecording || !meetingFolderPath ? undefined : meetingId}>
@@ -100,17 +117,7 @@ export function TranscriptPanel({
 
       </MeetingSpeakers>
 
-      {/* Custom prompt input at bottom of transcript section */}
-      {!isRecording && convertedSegments.length > 0 && (
-        <div className="p-1 border-t border-gray-200">
-          <textarea
-            placeholder="Add context for AI summary. For example people involved, meeting overview, objective etc..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm min-h-[80px] resize-y"
-            value={customPrompt}
-            onChange={(e) => onPromptChange(e.target.value)}
-          />
-        </div>
-      )}
+
     </div>
   );
 }

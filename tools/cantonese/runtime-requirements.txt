@@ -5,3 +5,4 @@ huggingface-hub==2.2.0
 soundfile==0.14.0
 truststore==0.10.5
 sherpa-onnx==2.0.1
+opencc-python-reimplemented==0.1.7

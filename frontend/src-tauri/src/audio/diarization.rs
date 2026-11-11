@@ -44,12 +44,12 @@ pub async fn meeting_speakers<R: Runtime>(
     if let Some((analysis, names)) = row {
         result["analysis"] = serde_json::from_str(&analysis).map_err(|e| e.to_string())?;
         result["names"] = serde_json::from_str(&names).map_err(|e| e.to_string())?;
-        if let Ok(audio) = recording(&state, &meeting_id).await {
-            app.asset_protocol_scope()
-                .allow_file(&audio)
-                .map_err(|e| e.to_string())?;
-            result["audio"] = json!(audio);
-        }
+    }
+    if let Ok(audio) = recording(&state, &meeting_id).await {
+        app.asset_protocol_scope()
+            .allow_file(&audio)
+            .map_err(|e| e.to_string())?;
+        result["audio"] = json!(audio);
     }
     Ok(result)
 }
@@ -60,6 +60,7 @@ pub async fn identify_meeting_speakers<R: Runtime>(
     state: State<'_, AppState>,
     meeting_id: String,
     speaker_count: Option<i32>,
+    references: Option<Vec<Value>>,
 ) -> Result<(), String> {
     let count = speaker_count.unwrap_or(-1);
     if count != -1 && !(2..=10).contains(&count) {
@@ -69,12 +70,23 @@ pub async fn identify_meeting_speakers<R: Runtime>(
         .try_lock()
         .map_err(|_| "A speaker analysis is already running.")?;
     let audio = recording(&state, &meeting_id).await?;
-    let result = mlx_provider::python_command()
+    let mut command = mlx_provider::python_command();
+    command
         .arg(mlx_provider::script("diarize.py"))
         .arg(model_dir(&app)?)
         .arg(ffmpeg::find_ffmpeg_path().ok_or("Audio decoder unavailable")?)
         .arg(audio)
-        .arg(count.to_string())
+        .arg(count.to_string());
+    if references.is_some() && count == -1 {
+        return Err("Select the number of speakers before calibration.".into());
+    }
+    let segments: Vec<(String, String, f64, f64)> = sqlx::query_as(
+        "SELECT id, transcript, audio_start_time, audio_end_time FROM transcripts WHERE meeting_id=? AND audio_end_time > audio_start_time ORDER BY audio_start_time"
+    ).bind(&meeting_id).fetch_all(state.db_manager.pool()).await.map_err(|e| e.to_string())?;
+    let mut job_file = tempfile::NamedTempFile::new().map_err(|e| e.to_string())?;
+    serde_json::to_writer(&mut job_file, &json!({"references":references, "segments":segments})).map_err(|e| e.to_string())?;
+    command.arg(job_file.path());
+    let result = command
         .kill_on_drop(true)
         .output()
         .await
@@ -87,8 +99,8 @@ pub async fn identify_meeting_speakers<R: Runtime>(
             .to_string());
     }
     let analysis: Value = serde_json::from_slice(&result.stdout).map_err(|e| e.to_string())?;
-    sqlx::query("INSERT INTO meeting_speaker_analysis(meeting_id,analysis) VALUES(?,?) ON CONFLICT(meeting_id) DO UPDATE SET analysis=excluded.analysis,names='{}'")
-        .bind(meeting_id).bind(analysis.to_string()).execute(state.db_manager.pool()).await.map_err(|e|e.to_string())?;
+    sqlx::query("INSERT INTO meeting_speaker_analysis(meeting_id,analysis) VALUES(?,?) ON CONFLICT(meeting_id) DO UPDATE SET analysis=excluded.analysis,names=CASE WHEN ? THEN meeting_speaker_analysis.names ELSE '{}' END")
+        .bind(meeting_id).bind(analysis.to_string()).bind(references.is_some()).execute(state.db_manager.pool()).await.map_err(|e|e.to_string())?;
     Ok(())
 }
 

@@ -71,3 +71,9 @@ Rename user-facing “Summary Model” settings to “Language Model”: summary
 - This is bounded batch recognition, not token-streaming ASR: approximate delay is 6.5 seconds plus inference and queue time. Natural pauses can produce earlier results. Shorter context can affect word boundaries/accuracy, especially Whisper; real audio comparison remains pending. Large models slower than real time can still accumulate delay.
 - Regression compares live and original VAD output sample-for-sample, with and without trailing silence, and confirms delivery before the pause, timestamp ordering, and segment bounds.
 - Native fullscreen approach revised to NSPanel after the prior flag-only fix failed user acceptance.
+
+### Meeting speaker calibration and future speaker memory
+
+Quick recording and live captions require no voice samples. In a saved two-person meeting, users can optionally review passages, mark reference voices, and rerun local speaker assignment.
+
+Later, offer a separate opt-in to remember a confirmed speaker across meetings. Users choose likely attendees, listen to a proposed match, confirm the name, and can remove stored references. Keep an unknown-speaker option. Naming someone within one meeting does not enroll them across meetings.
