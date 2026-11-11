@@ -45,14 +45,14 @@ def prepare(root):
         stage.rename(root)
 
 
-def analyze(root, ffmpeg, audio):
+def analyze(root, ffmpeg, audio, count):
     start = time.monotonic()
     config = so.OfflineSpeakerDiarizationConfig(
         segmentation=so.OfflineSpeakerSegmentationModelConfig(
             pyannote=so.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(root / 'segment.onnx')),
             num_threads=2),
         embedding=so.SpeakerEmbeddingExtractorConfig(model=str(root / 'embed.onnx'), num_threads=2),
-        clustering=so.FastClusteringConfig(num_clusters=-1, threshold=0.5),
+        clustering=so.FastClusteringConfig(num_clusters=count, threshold=0.5),
         min_duration_on=0.3, min_duration_off=0.5)
     engine = so.OfflineSpeakerDiarization(config)
     cmd = [ffmpeg, '-nostdin', '-v', 'error', '-i', audio, '-vn', '-ac', '1', '-ar', '16000',
@@ -67,6 +67,6 @@ def analyze(root, ffmpeg, audio):
 
 
 if __name__ == '__main__':
-    folder, ffmpeg_path, recording = sys.argv[1:]
+    folder, ffmpeg_path, recording, count = sys.argv[1:]
     prepare(Path(folder))
-    print(json.dumps(analyze(Path(folder), ffmpeg_path, recording)))
+    print(json.dumps(analyze(Path(folder), ffmpeg_path, recording, int(count))))

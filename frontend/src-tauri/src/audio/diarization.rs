@@ -59,7 +59,12 @@ pub async fn identify_meeting_speakers<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
     meeting_id: String,
+    speaker_count: Option<i32>,
 ) -> Result<(), String> {
+    let count = speaker_count.unwrap_or(-1);
+    if count != -1 && !(2..=10).contains(&count) {
+        return Err("Select 2–10 speakers or Auto".into());
+    }
     let _job = RUNNING
         .try_lock()
         .map_err(|_| "A speaker analysis is already running.")?;
@@ -69,6 +74,7 @@ pub async fn identify_meeting_speakers<R: Runtime>(
         .arg(model_dir(&app)?)
         .arg(ffmpeg::find_ffmpeg_path().ok_or("Audio decoder unavailable")?)
         .arg(audio)
+        .arg(count.to_string())
         .kill_on_drop(true)
         .output()
         .await

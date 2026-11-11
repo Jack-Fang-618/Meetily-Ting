@@ -29,6 +29,7 @@ export function SegmentSpeakers({segment}: {segment: TranscriptSegmentData}) {
 
 export function MeetingSpeakers({meetingId, children}: {meetingId?: string; children: React.ReactNode}) {
   const [status, setStatus] = useState<Status>();
+  const [count, setCount] = useState(-1);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +41,7 @@ export function MeetingSpeakers({meetingId, children}: {meetingId?: string; chil
   const identify = async () => {
     setBusy(true); setError('');
     try {
-      await invoke('identify_meeting_speakers', {meetingId});
+      await invoke('identify_meeting_speakers', {meetingId, speakerCount: count});
       await refresh();
     } catch (e) {setError(String(e));} finally {setBusy(false);}
   };
@@ -69,9 +70,9 @@ export function MeetingSpeakers({meetingId, children}: {meetingId?: string; chil
             onBlur={e => {if (e.target.value !== (status.names?.[id] || '')) void rename(id,e.target.value);}}
             className="rounded border px-2 py-1 w-28"/></label>)}
         {status.audio && <audio ref={audio} className="w-full h-8" controls preload="metadata" src={convertFileSrc(status.audio)} />}
-      </> : <Button size="sm" variant="outline" disabled={busy} onClick={identify}>
+      </> : <><label className="mr-2">Speakers <select value={count} disabled={busy} onChange={e => setCount(Number(e.target.value))} className="rounded border p-1"><option value={-1}>Auto</option>{Array.from({length:9}, (_,i) => <option key={i} value={i+2}>{i+2}</option>)}</select></label><Button size="sm" variant="outline" disabled={busy} onClick={identify}>
         {busy ? 'Preparing speakers locally…' : status.ready ? 'Identify speakers' : 'Download models (45 MB) & identify speakers'}
-      </Button>}
+      </Button></>}
     </div>}
     {error && <p role="alert" className="text-xs text-red-700 px-4">{error}</p>}
     {children}
